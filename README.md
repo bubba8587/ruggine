@@ -135,8 +135,9 @@ rest.
 
 ## Status
 
-Pre-1.0 and moving fast: the API changes without deprecation paths while Solenoid, its first
-user, moves onto it.
+Pre-1.0 and moving fast: the API changes without deprecation paths. Its first user,
+[Solenoid](https://github.com/bubba8587/solenoid), runs its dataflow engine on it, compiled to
+wasm, with the app's own JavaScript nodes behind it.
 
 ## License
 
