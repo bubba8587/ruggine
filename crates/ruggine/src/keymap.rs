@@ -35,6 +35,13 @@ impl<V> KeyMap<V> {
         }
     }
 
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            entries: Vec::with_capacity(capacity),
+            index_keys: 0,
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.entries.len()
     }
@@ -152,7 +159,7 @@ impl<Q: Borrow<str> + ?Sized, V> std::ops::Index<&Q> for KeyMap<V> {
 macro_rules! keymap {
     () => { $crate::KeyMap::new() };
     ($($key:expr => $value:expr),+ $(,)?) => {{
-        let mut map = $crate::KeyMap::new();
+        let mut map = $crate::KeyMap::with_capacity([$(stringify!($key)),+].len());
         $( map.insert($key, $value); )+
         map
     }};

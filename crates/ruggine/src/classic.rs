@@ -328,6 +328,8 @@ pub struct Node<S = Socket> {
     outputs: RefCell<KeyMap<Rc<Output<S>>>>,
     controls: RefCell<KeyMap<Rc<dyn AnyControl>>>,
     selected: Cell<bool>,
+    input_keys: RefCell<Option<Rc<[String]>>>,
+    output_keys: RefCell<Option<Rc<[String]>>>,
 }
 
 impl<S> Node<S> {
@@ -339,6 +341,8 @@ impl<S> Node<S> {
             outputs: RefCell::new(KeyMap::new()),
             controls: RefCell::new(KeyMap::new()),
             selected: Cell::new(false),
+            input_keys: RefCell::new(None),
+            output_keys: RefCell::new(None),
         }
     }
 
@@ -362,6 +366,11 @@ impl<S> Node<S> {
         self.inputs.borrow()
     }
 
+    /// The input keys in order, shared until an input is added or removed.
+    pub fn input_keys(&self) -> Rc<[String]> {
+        cached_keys(&self.input_keys, || self.inputs.borrow().key_list())
+    }
+
     pub fn input(&self, key: &str) -> Option<Rc<Input<S>>> {
         self.inputs.borrow().get(key).cloned()
     }
@@ -381,15 +390,22 @@ impl<S> Node<S> {
             return Err(Error::InputAlreadyAdded(key));
         }
         inputs.insert(key, input.into());
+        self.input_keys.take();
         Ok(())
     }
 
     pub fn remove_input(&self, key: &str) -> Option<Rc<Input<S>>> {
+        self.input_keys.take();
         self.inputs.borrow_mut().remove(key)
     }
 
     pub fn outputs(&self) -> Ref<'_, KeyMap<Rc<Output<S>>>> {
         self.outputs.borrow()
+    }
+
+    /// The output keys in order, shared until an output is added or removed.
+    pub fn output_keys(&self) -> Rc<[String]> {
+        cached_keys(&self.output_keys, || self.outputs.borrow().key_list())
     }
 
     pub fn output(&self, key: &str) -> Option<Rc<Output<S>>> {
@@ -411,10 +427,12 @@ impl<S> Node<S> {
             return Err(Error::OutputAlreadyAdded(key));
         }
         outputs.insert(key, output.into());
+        self.output_keys.take();
         Ok(())
     }
 
     pub fn remove_output(&self, key: &str) -> Option<Rc<Output<S>>> {
+        self.output_keys.take();
         self.outputs.borrow_mut().remove(key)
     }
 
@@ -460,6 +478,16 @@ impl<S> Node<S> {
     pub fn remove_control(&self, key: &str) -> Option<Rc<dyn AnyControl>> {
         self.controls.borrow_mut().remove(key)
     }
+}
+
+fn cached_keys(
+    cache: &RefCell<Option<Rc<[String]>>>,
+    list: impl FnOnce() -> Vec<String>,
+) -> Rc<[String]> {
+    cache
+        .borrow_mut()
+        .get_or_insert_with(|| list().into())
+        .clone()
 }
 
 impl<S> NodeBase for Node<S> {

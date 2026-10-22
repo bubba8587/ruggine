@@ -3,7 +3,6 @@
 //! forwards. Mapping notes: `tree/specs/port.md` § Control flow.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use ruggine::classic::ClassicConnection;
@@ -11,6 +10,7 @@ use ruggine::{ConnectionBase, NodeBase, NodeEditor, Schemes, WeakNodeEditor};
 
 use crate::Error;
 use crate::dataflow::Keys;
+use ruggine::fxhash::FxHashMap as HashMap;
 
 /// Passes control on through the named output.
 pub type Forward<'a> = &'a dyn Fn(&str) -> Result<(), Error>;
@@ -25,14 +25,14 @@ pub struct ControlFlowNodeSetup {
 }
 
 impl ControlFlowNodeSetup {
-    pub fn new(
-        inputs: impl Fn() -> Vec<String> + 'static,
-        outputs: impl Fn() -> Vec<String> + 'static,
+    pub fn new<K: Into<Rc<[String]>>>(
+        inputs: impl Fn() -> K + 'static,
+        outputs: impl Fn() -> K + 'static,
         execute: impl Fn(Option<&str>, Forward<'_>) -> Result<(), Error> + 'static,
     ) -> Self {
         Self {
-            inputs: Box::new(inputs),
-            outputs: Box::new(outputs),
+            inputs: Box::new(move || inputs().into()),
+            outputs: Box::new(move || outputs().into()),
             execute: Box::new(execute),
         }
     }
@@ -65,7 +65,7 @@ where
         Self {
             inner: Rc::new(ControlFlowInner {
                 editor: editor.downgrade(),
-                setups: RefCell::new(HashMap::new()),
+                setups: RefCell::new(HashMap::default()),
             }),
         }
     }

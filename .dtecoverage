@@ -18,7 +18,8 @@ why: license text and notices are legal, not decided here
 LICENSE
 THIRD-PARTY-NOTICES.md
 
-why: indexes, queues and the pitch are reader navigation, not system descriptions
+why: indexes, queues, the pitch and measured results are reader navigation, not system descriptions
+docs/benchmarks.md
 README.md
 docs/README.md
 docs/backlog.md

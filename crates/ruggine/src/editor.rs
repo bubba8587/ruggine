@@ -3,10 +3,11 @@
 
 use std::any::Any;
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::rc::{Rc, Weak};
 
 use crate::Error;
+use crate::fxhash::FxHashMap as HashMap;
 use crate::scope::{ParentRef, Plugin, Scope, ScopeHandle, use_under};
 use crate::types::{ConnectionBase, NodeBase, Schemes};
 
@@ -80,7 +81,7 @@ impl<T: ?Sized> Store<T> {
     fn new() -> Self {
         Self {
             slots: Vec::new(),
-            index: HashMap::new(),
+            index: HashMap::default(),
             live: 0,
         }
     }

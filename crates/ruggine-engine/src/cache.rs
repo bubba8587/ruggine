@@ -1,8 +1,8 @@
 // [[B1]]
 //! Upstream's `Cache`: a map that tells its owner about every deletion.
 
+use ruggine::fxhash::FxHashMap as HashMap;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::hash::Hash;
 
 use crate::Error;
@@ -17,7 +17,7 @@ pub struct Cache<K, T> {
 impl<K: Eq + Hash + Clone, T: Clone> Cache<K, T> {
     pub fn new() -> Self {
         Self {
-            items: RefCell::new(HashMap::new()),
+            items: RefCell::new(HashMap::default()),
             on_delete: None,
         }
     }
@@ -25,7 +25,7 @@ impl<K: Eq + Hash + Clone, T: Clone> Cache<K, T> {
     /// `on_delete` gets the deleted item, or `None` when the key held nothing.
     pub fn with_on_delete(on_delete: impl Fn(Option<T>) + 'static) -> Self {
         Self {
-            items: RefCell::new(HashMap::new()),
+            items: RefCell::new(HashMap::default()),
             on_delete: Some(Box::new(on_delete)),
         }
     }

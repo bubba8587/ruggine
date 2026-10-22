@@ -2,6 +2,7 @@
 
 | Doc | What it holds |
 |---|---|
+| `benchmarks.md` | Ruggine against rete, workload by workload |
 | `dte.md` | how this repo keeps its decision tree |
 | `backlog.md` | open items only |
 | `dev-notes.md` | the current session's digest and open problems |

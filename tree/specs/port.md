@@ -115,8 +115,10 @@ values are one type `V` per engine (see Dataflow).
   `BaseSchemes` is `GetSchemes<dyn NodeBase, dyn ConnectionBase>`, upstream's untyped default.
 - Lookup by id is a hash lookup (upstream scans the list): Solenoid looks nodes up by id inside
   loops over nodes, which a scan makes quadratic. List order is insertion order, and removal keeps
-  the rest in order, so nothing observable changes. A node's id must not change while it is in
-  the editor.
+  the rest in order, so nothing observable changes. A removal leaves a gap that a later
+  compaction closes, so removing is constant time on average where shifting the list (upstream's
+  `splice`) is linear. Internal maps hash with Fx (`ruggine::fxhash`), not SipHash: ids are local
+  data, not hostile input. A node's id must not change while it is in the editor.
 - `get_connections_to(node)` / `get_connections_from(node)` answer upstream's
   `getConnections().filter(c => c.target === node)` (or `source`) from an index, in the same
   order. The engines use them; upstream's scan per node makes a fetch quadratic in graph size.
@@ -139,6 +141,9 @@ values are one type `V` per engine (see Dataflow).
 - Ports are `Rc<Input<S>>` / `Rc<Output<S>>` in a `KeyMap`, in JavaScript key order (canonical
   array-index keys ascending, then insertion order; a removed and re-added key goes last). The
   engines' default inputs and outputs come from that order, so it is part of the answer.
+  `input_keys()` / `output_keys()` give upstream's `Object.keys(node.inputs)` as a shared
+  `Rc<[String]>`, cached until a port is added or removed, and a setup's `inputs` / `outputs`
+  return the same type, so a fetch doesn't copy key lists.
   `Input` and `Output` deref to `Port`.
 - `Input` takes one connection unless set otherwise, `Output` many (upstream: `undefined` versus
   `!== false`). Upstream keeps an unset input flag `undefined`; here it is `false`, which reads
@@ -191,8 +196,9 @@ values are one type `V` per engine (see Dataflow).
 
 ## Ids and platforms
 
-- `get_uid` reads eight bytes from getrandom and prints them as sixteen lowercase hex
-  characters, upstream's shape. Ids land in Solenoid's saves and get pasted between documents,
+- `get_uid` takes eight secure random bytes and prints them as sixteen lowercase hex
+  characters, upstream's shape. The bytes come from getrandom 512 at a time, one call to the
+  platform per 64 ids. Ids land in Solenoid's saves and get pasted between documents,
   so they need a secure source, not a counter. `uid::set_random_source` swaps the source for the
   current thread, the seam upstream's tests get by mocking `crypto`.
 - Both crates build for `wasm32-unknown-unknown` and native, and CI builds both. No dependency

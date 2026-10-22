@@ -3,7 +3,6 @@
 //! [`Dataflow`] and caches each node's data until `reset`.
 
 use std::cell::RefCell;
-use std::collections::HashSet;
 use std::rc::{Rc, Weak};
 
 use ruggine::classic::{ClassicConnection, ClassicNode};
@@ -16,6 +15,7 @@ use crate::Error;
 use crate::cache::Cache;
 use crate::cancellable::Cancellable;
 use crate::dataflow::{DataFuture, Dataflow, DataflowNodeSetup, Inputs, Keys, Outputs};
+use ruggine::fxhash::FxHashSet;
 
 /// A node that computes outputs from its inputs.
 pub trait DataflowNode<V> {
@@ -138,8 +138,8 @@ where
             None => {
                 let (a, b) = (node.clone(), node.clone());
                 PortSelection {
-                    inputs: Box::new(move || a.classic().inputs().key_list()),
-                    outputs: Box::new(move || b.classic().outputs().key_list()),
+                    inputs: Box::new(move || a.classic().input_keys()),
+                    outputs: Box::new(move || b.classic().output_keys()),
                 }
             }
         };
@@ -189,7 +189,7 @@ where
         };
         let dataflow = self.dataflow()?;
         let editor = self.editor()?;
-        let mut visited = HashSet::new();
+        let mut visited = FxHashSet::default();
         let mut work = vec![start.to_owned()];
         while let Some(id) = work.pop() {
             if !visited.insert(id.clone()) {

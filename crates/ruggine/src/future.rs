@@ -2,13 +2,15 @@
 //! The few future tools the port needs, written against `std` alone so no runtime is implied.
 
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Wake, Waker};
+
+use crate::fxhash::FxHashMap as HashMap;
 
 pub type LocalBoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
 
@@ -235,7 +237,7 @@ thread_local! {
             parked: Mutex::new(Vec::new()),
         }),
         ready: RefCell::new(VecDeque::new()),
-        tasks: RefCell::new(HashMap::new()),
+        tasks: RefCell::new(HashMap::default()),
         running: RefCell::new(Vec::new()),
     });
 }

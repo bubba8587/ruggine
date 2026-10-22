@@ -236,3 +236,22 @@ fn a_change_callback_may_set_the_value_again() {
     assert_eq!(control.value(), Some(10.0));
     slot.borrow_mut().take();
 }
+
+#[test]
+fn cached_key_lists_follow_port_changes() {
+    let node = Node::new("A");
+    node.add_input("a", Input::new(socket("s"))).unwrap();
+    let first = node.input_keys();
+    assert!(
+        Rc::ptr_eq(&first, &node.input_keys()),
+        "shared until a port changes"
+    );
+    node.add_input("b", Input::new(socket("s"))).unwrap();
+    assert_eq!(&*node.input_keys(), ["a", "b"]);
+    node.remove_input("a");
+    assert_eq!(&*node.input_keys(), ["b"]);
+    node.add_output("x", Output::new(socket("s"))).unwrap();
+    assert_eq!(&*node.output_keys(), ["x"]);
+    node.remove_output("x");
+    assert!(node.output_keys().is_empty());
+}

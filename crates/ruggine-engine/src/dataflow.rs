@@ -3,7 +3,6 @@
 //! notes: `tree/specs/port.md` § Dataflow.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::future::Future;
 use std::rc::Rc;
 
@@ -12,6 +11,7 @@ use ruggine::future::{LocalBoxFuture, ready, try_join_all};
 use ruggine::{ConnectionBase, KeyMap, NodeBase, NodeEditor, Schemes, WeakNodeEditor};
 
 use crate::Error;
+use ruggine::fxhash::FxHashMap as HashMap;
 
 /// A node's outputs by key.
 pub type Outputs<V> = KeyMap<V>;
@@ -22,7 +22,8 @@ pub type Inputs<V> = KeyMap<Vec<V>>;
 pub type DataFuture<V> = LocalBoxFuture<'static, Result<Rc<Outputs<V>>, Error>>;
 /// Fetches the node's inputs when called; may be called more than once.
 pub type FetchInputs<V> = Box<dyn Fn() -> LocalBoxFuture<'static, Result<Inputs<V>, Error>>>;
-pub type Keys = Box<dyn Fn() -> Vec<String>>;
+/// A node's port keys in order; shared so asking for them needn't allocate.
+pub type Keys = Box<dyn Fn() -> Rc<[String]>>;
 
 /// How the dataflow processes one node.
 pub struct DataflowNodeSetup<V> {
@@ -32,17 +33,17 @@ pub struct DataflowNodeSetup<V> {
 }
 
 impl<V: 'static> DataflowNodeSetup<V> {
-    pub fn new<F>(
-        inputs: impl Fn() -> Vec<String> + 'static,
-        outputs: impl Fn() -> Vec<String> + 'static,
+    pub fn new<F, K: Into<Rc<[String]>>>(
+        inputs: impl Fn() -> K + 'static,
+        outputs: impl Fn() -> K + 'static,
         data: impl Fn(FetchInputs<V>) -> F + 'static,
     ) -> Self
     where
         F: Future<Output = Result<Rc<Outputs<V>>, Error>> + 'static,
     {
         Self {
-            inputs: Box::new(inputs),
-            outputs: Box::new(outputs),
+            inputs: Box::new(move || inputs().into()),
+            outputs: Box::new(move || outputs().into()),
             data: Box::new(move |fetch| Box::pin(data(fetch))),
         }
     }
@@ -76,7 +77,7 @@ where
         Self {
             inner: Rc::new(DataflowInner {
                 editor: editor.downgrade(),
-                setups: RefCell::new(HashMap::new()),
+                setups: RefCell::new(HashMap::default()),
             }),
         }
     }
@@ -125,7 +126,7 @@ where
         let fetches: Vec<_> = connections.iter().map(|c| self.fetch(c.source())).collect();
         Box::pin(async move {
             let fetched = try_join_all(fetches).await?;
-            let mut inputs = Inputs::new();
+            let mut inputs = Inputs::with_capacity(input_keys.len().min(connections.len()));
             for (c, source_data) in connections.iter().zip(fetched) {
                 if inputs.get(c.target_input()).is_none() {
                     inputs.insert(c.target_input(), Vec::new());
@@ -158,7 +159,7 @@ where
             if !output_keys.iter().all(|k| data.contains_key(k)) {
                 return Err(Error::MissingOutputs {
                     node_id,
-                    expected: output_keys,
+                    expected: output_keys.to_vec(),
                     got: data.key_list(),
                 });
             }

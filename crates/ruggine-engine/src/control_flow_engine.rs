@@ -107,8 +107,8 @@ where
             None => {
                 let (a, b) = (node.clone(), node.clone());
                 PortSelection {
-                    inputs: Box::new(move || a.classic().inputs().key_list()),
-                    outputs: Box::new(move || b.classic().outputs().key_list()),
+                    inputs: Box::new(move || a.classic().input_keys()),
+                    outputs: Box::new(move || b.classic().output_keys()),
                 }
             }
         };

@@ -14,6 +14,9 @@ Open problems and the latest session digests. Older digests move to
   concurrency, cancellation, reset, errors, editor events, key order, control flow).
 - Shared work runs on a per-thread queue standing in for JS's microtask queue: flat stack (50,000
   nodes native, 20,000 in debug wasm with real JS promises) and upstream's order of work.
+- Benchmarked against rete (`docs/benchmarks.md`, `node tools/bench/compare.mjs`): faster at
+  every workload, 9 to 90× at 10,000 nodes. Removal went from quadratic to amortized constant,
+  ids pool their randomness, maps hash with Fx, and nodes cache their key lists.
 - Wasm is tested in a real runtime (wasm-bindgen-test under Node), including getrandom's
   browser backend.
 - Open: control flow stays recursive by contract (`port.md` § Futures); a fetched cycle never

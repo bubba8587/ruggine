@@ -6,6 +6,7 @@ pub mod classic;
 pub mod editor;
 pub mod error;
 pub mod future;
+pub mod fxhash;
 pub mod keymap;
 pub mod scope;
 pub mod types;

@@ -111,11 +111,17 @@ pub const SCENARIOS: &[&str] = &[
     "clear",
 ];
 
+/// The timed part of a scenario, kept out of line so a profiler can single it out.
+#[inline(never)]
+pub fn measured(f: &mut dyn FnMut()) {
+    f();
+}
+
 /// Times one scenario on a graph of `n` nodes; `now` is a millisecond clock.
 pub fn scenario(name: &str, n: usize, now: &dyn Fn() -> f64) -> f64 {
     let time = |f: &mut dyn FnMut()| {
         let start = now();
-        f();
+        measured(f);
         now() - start
     };
     match name {

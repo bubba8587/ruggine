@@ -1,5 +1,6 @@
 // [[A1]] rustRete
-//! `ruggine-bench <n> <runs>`: prints the native report as JSON.
+//! `ruggine-bench <n> <runs> [scenario]`: prints the native report as JSON, or one scenario's
+//! time.
 
 use std::time::Instant;
 
@@ -9,5 +10,8 @@ fn main() {
     let runs = args.next().map_or(5, |a| a.parse().expect("runs"));
     let start = Instant::now();
     let now = || start.elapsed().as_secs_f64() * 1000.0;
-    println!("{}", ruggine_bench::report(n, runs, &now));
+    match args.next() {
+        Some(name) => println!("{}", ruggine_bench::scenario(&name, n, &now)),
+        None => println!("{}", ruggine_bench::report(n, runs, &now)),
+    }
 }
