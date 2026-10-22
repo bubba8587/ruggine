@@ -20,6 +20,7 @@ THIRD-PARTY-NOTICES.md
 
 why: indexes, queues, the pitch and measured results are reader navigation, not system descriptions
 docs/benchmarks.md
+docs/migrating-from-rete.md
 README.md
 docs/README.md
 docs/backlog.md

@@ -2,6 +2,7 @@
 
 | Doc | What it holds |
 |---|---|
+| `migrating-from-rete.md` | every rete and rete-engine symbol, and how it reads in Ruggine |
 | `benchmarks.md` | Ruggine against rete, workload by workload |
 | `dte.md` | how this repo keeps its decision tree |
 | `backlog.md` | open items only |

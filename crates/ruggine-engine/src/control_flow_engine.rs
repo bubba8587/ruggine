@@ -90,16 +90,18 @@ where
         Self { inner }
     }
 
-    fn control_flow(&self) -> Result<ControlFlow<S>, Error> {
-        self.inner
-            .control_flow
-            .borrow()
-            .clone()
+    /// Upstream's `engine.controlflow`, once attached.
+    pub fn control_flow(&self) -> Option<ControlFlow<S>> {
+        self.inner.control_flow.borrow().clone()
+    }
+
+    fn attached(&self) -> Result<ControlFlow<S>, Error> {
+        self.control_flow()
             .ok_or(Error::NotAttached("ControlFlowEngine"))
     }
 
     fn add(&self, node: Rc<S::Node>) {
-        let Ok(control_flow) = self.control_flow() else {
+        let Ok(control_flow) = self.attached() else {
             return;
         };
         let ports = match &self.inner.configure {
@@ -122,14 +124,14 @@ where
     }
 
     fn remove(&self, node_id: &str) {
-        if let Ok(control_flow) = self.control_flow() {
+        if let Ok(control_flow) = self.attached() {
             control_flow.remove(node_id);
         }
     }
 
     /// Starts a run at `node_id`, as if control arrived on `input`.
     pub fn execute(&self, node_id: &str, input: Option<&str>) -> Result<(), Error> {
-        self.control_flow()?.execute(node_id, input)
+        self.attached()?.execute(node_id, input)
     }
 }
 

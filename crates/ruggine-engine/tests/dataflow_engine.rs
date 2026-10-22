@@ -42,6 +42,10 @@ impl TestNode {
     fn id(&self) -> String {
         self.node.id.clone()
     }
+
+    fn label(&self) -> String {
+        self.node.label()
+    }
 }
 
 impl NodeBase for TestNode {
@@ -311,4 +315,24 @@ fn a_detached_engine_names_itself() {
         err.to_string(),
         "DataflowEngine isn't attached to NodeEditor"
     );
+}
+
+#[test]
+fn dropping_the_editor_and_engine_frees_every_node() {
+    let nodes: Vec<Rc<TestNode>> = {
+        let (editor, engine) = setup();
+        let [n1, n2, n3] = three(&editor);
+        connect(&editor, &n1, &n2);
+        connect(&editor, &n2, &n3);
+        let pipe = editor.add_pipe(Some);
+        run(engine.fetch(&n3.id())).unwrap();
+        engine.reset(Some(&n1.id())).unwrap();
+        run(engine.fetch(&n3.id())).unwrap();
+        editor.remove_pipe(pipe);
+        run(editor.remove_node(&n1.id())).unwrap();
+        vec![n1, n2, n3]
+    };
+    for node in &nodes {
+        assert_eq!(Rc::strong_count(node), 1, "{} is still held", node.label());
+    }
 }

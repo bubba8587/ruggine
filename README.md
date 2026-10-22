@@ -73,6 +73,9 @@ many kinds of node in one graph. Values are one type of your choosing per engine
 
 ## Faithful to rete
 
+Coming from rete? [`docs/migrating-from-rete.md`](docs/migrating-from-rete.md) maps every rete
+and rete-engine symbol to its Ruggine counterpart.
+
 Ruggine aims to give the same answers as rete in every case, and to write down each case where
 it doesn't.
 

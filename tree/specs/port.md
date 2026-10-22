@@ -235,7 +235,9 @@ values are one type `V` per engine (see Dataflow).
 
 ## Solenoid's calls
 
-How Solenoid's rete calls read in Ruggine, for the port of Solenoid's graph layer:
+How Solenoid's rete calls read in Ruggine, for the port of Solenoid's graph layer
+(`ruggine-engine/tests/solenoid_patterns.rs` runs these patterns: cycle seeding, invalidation, a
+pass that survives a reset, composites):
 
 | Solenoid (TS) | Ruggine |
 |---|---|
@@ -246,4 +248,7 @@ How Solenoid's rete calls read in Ruggine, for the port of Solenoid's graph laye
 | `new DataflowEngine<Schemes>()` + `editor.use(engine)` | `DataflowEngine::<Schemes, V>::new()` + `editor.use_scope(&engine)?` |
 | `engine.fetch(id)` / `engine.reset(id)` | `engine.fetch(id).await` / `engine.reset(Some(id))` |
 | `e instanceof Cancelled` | `e.is_cancelled()` |
+| `engine.cache.delete(id)`, `engine.cache.add(id, seeded)` (graphCompute.ts) | `engine.cache().delete(id)`, `engine.cache().add(id, Cancellable::resolved(..))` |
+| a "live" flag to neutralize a pipe on cleanup | `editor.remove_pipe(id)` |
+| its own `invalidate`, because `engine.reset` overflows on a cycle | `engine.reset(Some(id))` is cycle-safe (it clears only through outputs the setups list, as upstream does) |
 | `class X extends ClassicPreset.Node` | a struct holding a `classic::Node`, implementing `ClassicNode` and `DataflowNode<V>`; the scheme's node type is a trait object over them (`ruggine-engine/tests/dyn_nodes.rs`) |
