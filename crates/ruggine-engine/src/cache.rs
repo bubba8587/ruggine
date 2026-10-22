@@ -2,6 +2,7 @@
 //! Upstream's `Cache`: a map that tells its owner about every deletion.
 
 use ruggine::fxhash::FxHashMap as HashMap;
+use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::hash::Hash;
 
@@ -30,7 +31,10 @@ impl<K: Eq + Hash + Clone, T: Clone> Cache<K, T> {
         }
     }
 
-    pub fn get(&self, key: &K) -> Option<T> {
+    pub fn get<Q: Hash + Eq + ?Sized>(&self, key: &Q) -> Option<T>
+    where
+        K: Borrow<Q>,
+    {
         self.items.borrow().get(key).cloned()
     }
 
@@ -47,7 +51,10 @@ impl<K: Eq + Hash + Clone, T: Clone> Cache<K, T> {
         self.items.borrow_mut().insert(key, data);
     }
 
-    pub fn delete(&self, key: &K) {
+    pub fn delete<Q: Hash + Eq + ?Sized>(&self, key: &Q)
+    where
+        K: Borrow<Q>,
+    {
         let item = self.items.borrow_mut().remove(key);
         if let Some(on_delete) = &self.on_delete {
             on_delete(item);

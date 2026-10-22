@@ -245,3 +245,44 @@ fn a_parent_keeps_a_used_child_alive() {
     run(p.emit(parent("x")));
     assert_eq!(*calls.borrow(), [ChildSignal::Parent(parent("x"))]);
 }
+
+#[test]
+fn a_removed_pipe_no_longer_runs() {
+    let scope = Scope::<u32>::new("test");
+    let a = scope.add_pipe(|n| Some(n + 1));
+    scope.add_pipe(|n| Some(n * 10));
+    assert_eq!(run(scope.emit(1)), Some(20));
+    assert!(scope.remove_pipe(a));
+    assert!(!scope.remove_pipe(a));
+    assert_eq!(run(scope.emit(1)), Some(10));
+}
+
+#[test]
+fn removing_pipes_mid_emit_skips_them_and_keeps_the_rest_in_place() {
+    let scope = Scope::<Vec<&'static str>>::new("test");
+    let later: Rc<std::cell::Cell<Option<ruggine::PipeId>>> = Rc::default();
+    let first: Rc<std::cell::Cell<Option<ruggine::PipeId>>> = Rc::default();
+    let (handle, l, f) = (scope.clone(), later.clone(), first.clone());
+    let a = scope.add_pipe(|mut v| {
+        v.push("a");
+        Some(v)
+    });
+    first.set(Some(a));
+    scope.add_pipe(move |mut v| {
+        v.push("remover");
+        handle.remove_pipe(f.get().unwrap());
+        handle.remove_pipe(l.get().unwrap());
+        Some(v)
+    });
+    scope.add_pipe(|mut v| {
+        v.push("c");
+        Some(v)
+    });
+    let d = scope.add_pipe(|mut v| {
+        v.push("d");
+        Some(v)
+    });
+    later.set(Some(d));
+    assert_eq!(run(scope.emit(Vec::new())), Some(vec!["a", "remover", "c"]));
+    assert_eq!(run(scope.emit(Vec::new())), Some(vec!["remover", "c"]));
+}

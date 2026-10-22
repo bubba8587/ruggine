@@ -326,3 +326,19 @@ fn order_and_lookups_survive_many_removals() {
     assert_eq!(editor.get_nodes().last().unwrap().id(), "new");
     assert!(editor.get_node("1").is_none());
 }
+
+#[test]
+fn an_editor_pipe_can_be_removed() {
+    let editor = Editor::new();
+    let seen = Rc::new(std::cell::Cell::new(0));
+    let count = seen.clone();
+    let pipe = editor.add_pipe(move |ctx| {
+        count.set(count.get() + 1);
+        Some(ctx)
+    });
+    run(editor.add_node(node("1"))).unwrap();
+    assert_eq!(seen.get(), 2);
+    assert!(editor.remove_pipe(pipe));
+    run(editor.add_node(node("2"))).unwrap();
+    assert_eq!(seen.get(), 2);
+}

@@ -22,6 +22,10 @@ difference not listed here is a bug.
   `fixtures/oracle.json`), and `ruggine-engine/tests/oracle.rs` replays each scenario, by name,
   against Ruggine. Any behavior where order or concurrency matters gets a scenario there rather
   than an expectation written by hand.
+- The fuzzer: `tools/oracle/fuzz.cjs` generates 300 random operation sequences with one
+  operation at a time and 300 with several fetches in flight, runs them on upstream and records
+  each trace in `fixtures/oracle-fuzz.json` (by `run.mjs`); `oracle_fuzz.rs` replays them,
+  driving the queue as a JS host would, and holds Ruggine to the guarantees in § Futures.
 - Moving the pin: `upstream/README.md`; then rerun the oracle and diff old and new `src/` and
   `test/` against this spec.
 
@@ -68,13 +72,28 @@ values are one type `V` per engine (see Dataflow).
   out, one at a time, so a chain of nodes never nests on the stack (a 50,000-node chain is
   tested natively, 20,000 in debug wasm; nesting overflowed a debug build before 1,000).
 - Who runs the queue: awaiting a `Shared` from inside queued work only queues it. Awaiting it
-  from anywhere else (an executor, `now_or_never`, a blocking call inside a node) runs the queue
-  until nothing is left, then looks again; if the work still waits on something outside, the
-  poller is parked and woken as soon as anything on the queue wakes, from any thread. The
-  engines' `fetch` and `fetch_inputs` are wrapped in `future::settle`, which also runs the queue
-  dry after the result is ready, as JS runs every microtask before returning to the event loop.
-  Together these give upstream's order of work and of errors: concurrent fetches interleave, the
-  error that arrives first wins, and failed siblings still run (the oracle checks each case).
+  from anywhere else (an executor, `now_or_never`, a blocking call inside a node) runs queued
+  work until the `Shared` is done, then the work already queued at that moment, and returns:
+  where JS would resume the caller, behind the microtasks already waiting. If the work still
+  waits on something outside, the poller is parked and woken as soon as anything on the queue
+  wakes, from any thread. The engines' `fetch` and `fetch_inputs` are wrapped in
+  `future::settle`, which does the same when the result is ready without awaiting a `Shared`
+  (an input with no setup fails at once while its siblings' work is queued).
+- Work nobody awaits any more (the siblings of a fetch that failed) runs whenever the queue next
+  runs. `future::background()` is the host's event loop for it: spawned once, it runs the queue
+  dry every time work arrives, so that work finishes as it would in JS even if Ruggine is never
+  called again.
+- What matches upstream, checked by `ruggine-engine/tests/oracle_fuzz.rs` on random operation
+  sequences recorded from upstream (`tools/oracle/fuzz.cjs`): every operation's result and every
+  editor event, in order, and the set of node work that runs. What can differ, because it
+  follows from how many microtask turns each step of upstream's promise chain takes (a node
+  whose inputs are cached still waits about three turns more than one with no inputs):
+  - the order in which sibling inputs' work runs within one fetch;
+  - when several fetches are in flight and more than one fails, which failure is reported;
+  - whether a reset issued while abandoned work is still running lands before or after a given
+    node's work.
+  Matching those would mean replaying V8's promise job scheduling turn for turn; nothing
+  Solenoid does depends on them, since it fetches one node at a time.
 - A `Shared` whose work panics poisons: every later await panics too, and everyone waiting is
   woken to see it. Work left queued by a panic runs the next time the queue does.
 - Like JS microtasks, a task that wakes itself on every poll starves the rest: the queue never
@@ -96,6 +115,10 @@ values are one type `V` per engine (see Dataflow).
 - A pipe returns `Some(context)` to continue or `None` to stop, upstream's `undefined`. Sync and
   async pipes are added with `add_pipe` / `add_async_pipe` and run in one chain, in order. A pipe
   added during an emit runs in that emit.
+- Beyond upstream, which can't take a pipe back: `add_pipe` returns a `PipeId` and
+  `remove_pipe(id)` takes the pipe out. An emit in progress that hasn't reached it skips it; the
+  others keep their places. Solenoid works around the missing removal with a "live" flag per
+  pipe.
 - `use_scope(child)` sets the child's parent, then adds a pipe that holds a clone of the child
   and runs the child's chain at that point, so the parent keeps the child alive as in JS. If a
   child pipe turns the parent's signal into one the parent's type can't hold
@@ -177,6 +200,11 @@ values are one type `V` per engine (see Dataflow).
   overflows, which in wasm aborts the whole module instead of throwing. `reset(None)` and
   `reset(Some(""))` clear everything (upstream's `if (nodeId)`).
 - A cached run that failed stays failed until reset, as upstream's rejected promise does.
+- `engine.cache()` is upstream's `engine.cache`: `delete` an entry to make that node run again
+  (cancelling a run in flight), or `add` / `patch` a `Cancellable::resolved(result)` to give a
+  node a result without running it, upstream's
+  `Object.assign(Promise.resolve(outputs), { cancel() {} })`. Solenoid seeds loop errors this
+  way. `engine.dataflow()` is upstream's `engine.dataflow`.
 - Both engines: upstream throws out of the editor's `nodecreated` pipe when the engine isn't
   attached or the node is already set up; a pipe can't fail here, so the engine skips the node,
   and a later fetch or execute fails with "node is not initialized". An engine that isn't

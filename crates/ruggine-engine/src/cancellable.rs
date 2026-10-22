@@ -56,6 +56,15 @@ impl<T: Clone + 'static> Cancellable<T> {
         }
     }
 
+    /// Already finished with `result`, like upstream's
+    /// `Object.assign(Promise.resolve(value), { cancel() {} })`: a way to seed a cache.
+    pub fn resolved(result: Result<T, Error>) -> Self {
+        Self {
+            shared: Shared::ready(result),
+            cancelled: Rc::new(Cell::new(false)),
+        }
+    }
+
     /// No effect once the work has finished.
     pub fn cancel(&self) {
         self.cancelled.set(true);

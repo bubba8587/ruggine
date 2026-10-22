@@ -15,6 +15,6 @@ pub mod uid;
 pub use editor::{NodeEditor, Root, WeakNodeEditor};
 pub use error::Error;
 pub use keymap::KeyMap;
-pub use scope::{Accepts, ParentRef, Plugin, Scope, ScopeHandle, Signal};
+pub use scope::{Accepts, ParentRef, PipeId, Plugin, Scope, ScopeHandle, Signal};
 pub use types::{BaseSchemes, ConnectionBase, ConnectionId, GetSchemes, NodeBase, NodeId, Schemes};
 pub use uid::get_uid;

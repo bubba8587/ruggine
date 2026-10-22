@@ -27,3 +27,4 @@ docs/dte.md
 
 why: generated from upstream by tools/oracle/run.mjs; JSON can't cite
 fixtures/oracle.json
+fixtures/oracle-fuzz.json

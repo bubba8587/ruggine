@@ -12,7 +12,7 @@ fn cache() -> Cache<String, i32> {
 fn adds_and_gets_an_item() {
     let c = cache();
     c.add("key1".into(), 1).unwrap();
-    assert_eq!(c.get(&"key1".into()), Some(1));
+    assert_eq!(c.get("key1"), Some(1));
 }
 
 #[test]
@@ -29,15 +29,15 @@ fn patches_an_item() {
     let c = cache();
     c.add("key1".into(), 1).unwrap();
     c.patch("key1".into(), 2);
-    assert_eq!(c.get(&"key1".into()), Some(2));
+    assert_eq!(c.get("key1"), Some(2));
 }
 
 #[test]
 fn deletes_an_item() {
     let c = cache();
     c.add("key1".into(), 1).unwrap();
-    c.delete(&"key1".into());
-    assert_eq!(c.get(&"key1".into()), None);
+    c.delete("key1");
+    assert_eq!(c.get("key1"), None);
 }
 
 #[test]
@@ -46,8 +46,8 @@ fn calls_on_delete_with_the_item() {
     let log = seen.clone();
     let c = Cache::<String, i32>::with_on_delete(move |item| log.borrow_mut().push(item));
     c.add("key1".into(), 1).unwrap();
-    c.delete(&"key1".into());
-    c.delete(&"missing".into());
+    c.delete("key1");
+    c.delete("missing");
     assert_eq!(*seen.borrow(), [Some(1), None]);
 }
 
@@ -57,6 +57,6 @@ fn clears_every_item() {
     c.add("key1".into(), 1).unwrap();
     c.add("key2".into(), 2).unwrap();
     c.clear();
-    assert_eq!(c.get(&"key1".into()), None);
-    assert_eq!(c.get(&"key2".into()), None);
+    assert_eq!(c.get("key1"), None);
+    assert_eq!(c.get("key2"), None);
 }

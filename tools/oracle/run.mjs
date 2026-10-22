@@ -16,3 +16,15 @@ for (const [name, scenario] of Object.entries(scenarios)) {
 }
 writeFileSync(join(root, 'fixtures/oracle.json'), JSON.stringify(answers, null, 2) + '\n')
 console.log(`wrote ${Object.keys(answers).length} answers to fixtures/oracle.json`)
+
+const fuzz = require('./fuzz.cjs')
+const suites = {}
+for (const [name, concurrent] of [['sequential', false], ['concurrent', true]]) {
+  suites[name] = []
+  for (let seed = 1; seed <= 300; seed++) {
+    const ops = fuzz.generate(seed, 40, concurrent)
+    suites[name].push({ seed, ops, trace: await fuzz.run(upstream, ops) })
+  }
+}
+writeFileSync(join(root, 'fixtures/oracle-fuzz.json'), JSON.stringify(suites) + '\n')
+console.log('wrote 300 sequential and 300 concurrent random cases to fixtures/oracle-fuzz.json')

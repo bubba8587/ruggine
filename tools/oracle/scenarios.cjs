@@ -332,5 +332,18 @@ module.exports = {
     }, [['E', 'D', 'e'], ['C', 'D', 'c']])
     const out = await g.dataflow.fetchInputs('D')
     return { log: g.log, out }
+  },
+  async seeded_cache(up) {
+    const g = await chain(up)
+    const seeded = Object.assign(Promise.resolve({ o: 'seeded' }), { cancel() {} })
+    g.dataflow.cache.add('B', seeded)
+    const first = await g.dataflow.fetch('D')
+    const inputs = await g.dataflow.fetchInputs('D')
+    const log1 = [...g.log]
+    g.log.length = 0
+    g.dataflow.cache.delete('B')
+    g.dataflow.cache.delete('D')
+    await g.dataflow.fetch('D')
+    return { log1, inputs, first, log2: g.log }
   }
 }

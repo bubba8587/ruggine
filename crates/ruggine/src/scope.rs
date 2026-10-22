@@ -3,7 +3,7 @@
 //! the child scopes they `use`. Mapping notes: `tree/specs/port.md` § Scopes.
 
 use std::any::Any;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::future::Future;
 use std::rc::{Rc, Weak};
 
@@ -27,44 +27,88 @@ impl<T> Clone for Pipe<T> {
     }
 }
 
+type Slot<T> = Option<(PipeId, Pipe<T>)>;
+
+/// Names one pipe on a signal, to remove it later.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PipeId(u64);
+
 /// A middleware chain. A pipe returns the context to pass on, or `None` to stop the chain.
 pub struct Signal<T> {
-    pipes: RefCell<Vec<Pipe<T>>>,
+    /// A removed pipe leaves `None` while an emit is walking the list, so positions don't shift.
+    pipes: RefCell<Vec<Slot<T>>>,
+    next: Cell<u64>,
+    emitting: Cell<usize>,
+}
+
+struct Emitting<'a>(&'a Cell<usize>);
+
+impl Drop for Emitting<'_> {
+    fn drop(&mut self) {
+        self.0.set(self.0.get() - 1);
+    }
 }
 
 impl<T: 'static> Signal<T> {
     pub fn new() -> Self {
         Self {
             pipes: RefCell::new(Vec::new()),
+            next: Cell::new(0),
+            emitting: Cell::new(0),
         }
     }
 
-    pub fn add_pipe(&self, pipe: impl Fn(T) -> Option<T> + 'static) {
-        self.pipes.borrow_mut().push(Pipe::Sync(Rc::new(pipe)));
+    fn push(&self, pipe: Pipe<T>) -> PipeId {
+        let id = PipeId(self.next.get());
+        self.next.set(id.0 + 1);
+        self.pipes.borrow_mut().push(Some((id, pipe)));
+        id
     }
 
-    pub fn add_async_pipe<F>(&self, pipe: impl Fn(T) -> F + 'static)
+    pub fn add_pipe(&self, pipe: impl Fn(T) -> Option<T> + 'static) -> PipeId {
+        self.push(Pipe::Sync(Rc::new(pipe)))
+    }
+
+    pub fn add_async_pipe<F>(&self, pipe: impl Fn(T) -> F + 'static) -> PipeId
     where
         F: Future<Output = Option<T>> + 'static,
     {
-        self.pipes
-            .borrow_mut()
-            .push(Pipe::Async(Rc::new(move |ctx| Box::pin(pipe(ctx)))));
+        self.push(Pipe::Async(Rc::new(move |ctx| Box::pin(pipe(ctx)))))
+    }
+
+    /// Takes the pipe out of the chain; an emit in progress that hasn't reached it skips it.
+    /// `false` if it was already gone. Upstream has no way to remove a pipe.
+    pub fn remove_pipe(&self, id: PipeId) -> bool {
+        let mut pipes = self.pipes.borrow_mut();
+        let Some(slot) = pipes
+            .iter_mut()
+            .find(|p| p.as_ref().is_some_and(|(i, _)| *i == id))
+        else {
+            return false;
+        };
+        *slot = None;
+        if self.emitting.get() == 0 {
+            pipes.retain(Option::is_some);
+        }
+        true
     }
 
     /// Runs the context through every pipe in order; a pipe added mid-emit still runs, as in
     /// upstream's live array walk.
     pub async fn emit(&self, context: T) -> Option<T> {
+        self.emitting.set(self.emitting.get() + 1);
+        let _emitting = Emitting(&self.emitting);
         let mut current = context;
         let mut i = 0;
         loop {
-            let pipe = self.pipes.borrow().get(i).cloned();
-            current = match pipe {
-                None => return Some(current),
-                Some(Pipe::Sync(f)) => f(current)?,
-                Some(Pipe::Async(f)) => f(current).await?,
-            };
+            let slot = self.pipes.borrow().get(i).cloned();
             i += 1;
+            current = match slot {
+                None => return Some(current),
+                Some(None) => continue,
+                Some(Some((_, Pipe::Sync(f)))) => f(current)?,
+                Some(Some((_, Pipe::Async(f)))) => f(current).await?,
+            };
         }
     }
 }
@@ -164,15 +208,19 @@ impl<T: 'static> Scope<T> {
         &self.inner.signal
     }
 
-    pub fn add_pipe(&self, pipe: impl Fn(T) -> Option<T> + 'static) {
-        self.inner.signal.add_pipe(pipe);
+    pub fn add_pipe(&self, pipe: impl Fn(T) -> Option<T> + 'static) -> PipeId {
+        self.inner.signal.add_pipe(pipe)
     }
 
-    pub fn add_async_pipe<F>(&self, pipe: impl Fn(T) -> F + 'static)
+    pub fn add_async_pipe<F>(&self, pipe: impl Fn(T) -> F + 'static) -> PipeId
     where
         F: Future<Output = Option<T>> + 'static,
     {
-        self.inner.signal.add_async_pipe(pipe);
+        self.inner.signal.add_async_pipe(pipe)
+    }
+
+    pub fn remove_pipe(&self, id: PipeId) -> bool {
+        self.inner.signal.remove_pipe(id)
     }
 
     pub async fn emit(&self, context: T) -> Option<T> {

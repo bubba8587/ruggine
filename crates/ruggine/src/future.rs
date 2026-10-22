@@ -162,6 +162,10 @@ struct Remote {
 impl Remote {
     fn notify(&self, task: u64) {
         lock(&self.woken).push(task);
+        self.wake_parked();
+    }
+
+    fn wake_parked(&self) {
         let parked = std::mem::take(&mut *lock(&self.parked));
         for waker in parked {
             waker.wake();
@@ -264,6 +268,9 @@ impl Queue {
             tasks.insert(task.task_id(), Rc::downgrade(&task));
             drop(tasks);
             self.ready.borrow_mut().push_back(task);
+            if self.running.borrow().is_empty() {
+                self.remote.wake_parked();
+            }
         }
     }
 
@@ -276,29 +283,75 @@ impl Queue {
             .is_some_and(|w| w.will_wake(waker))
     }
 
-    /// Runs queued and woken work until none is left; `true` if anything ran.
-    fn drain(&self) -> bool {
-        let mut ran = false;
-        loop {
-            let woken = std::mem::take(&mut *lock(&self.remote.woken));
-            for id in woken {
-                let task = self.tasks.borrow().get(&id).and_then(Weak::upgrade);
-                match task {
-                    Some(task) => self.enqueue(task),
-                    None => {
-                        self.tasks.borrow_mut().remove(&id);
-                    }
+    fn take_woken(&self) {
+        let woken = std::mem::take(&mut *lock(&self.remote.woken));
+        for id in woken {
+            let task = self.tasks.borrow().get(&id).and_then(Weak::upgrade);
+            match task {
+                Some(task) => self.enqueue(task),
+                None => {
+                    self.tasks.borrow_mut().remove(&id);
                 }
             }
-            let next = self.ready.borrow_mut().pop_front();
-            let Some(task) = next else {
-                return ran;
-            };
-            ran = true;
-            if task.run(self) {
-                self.tasks.borrow_mut().remove(&task.task_id());
+        }
+    }
+
+    /// Runs the next queued task; `false` if there was none.
+    fn run_one(&self) -> bool {
+        self.take_woken();
+        let next = self.ready.borrow_mut().pop_front();
+        let Some(task) = next else {
+            return false;
+        };
+        if task.run(self) {
+            self.tasks.borrow_mut().remove(&task.task_id());
+        }
+        true
+    }
+
+    /// Runs what is queued right now and nothing queued after: where JavaScript would resume a
+    /// caller whose promise just settled, behind the microtasks already waiting.
+    fn run_queued_now(&self) {
+        self.take_woken();
+        let waiting = self.ready.borrow().len();
+        for _ in 0..waiting {
+            self.run_one();
+        }
+    }
+
+    /// Runs queued work until `done` holds (then [`Queue::run_queued_now`]) or nothing is left.
+    fn drive(&self, done: &dyn Fn() -> bool) {
+        while !done() {
+            if !self.run_one() {
+                return;
             }
         }
+        self.run_queued_now();
+    }
+}
+
+/// A future that never finishes and runs this thread's queue dry every time work arrives: what
+/// a JavaScript host's event loop does for microtasks. Spawn it once on the host's executor
+/// (`wasm_bindgen_futures::spawn_local(background())`) and work nobody awaits any more, such as a
+/// sibling of a fetch that failed, carries on as it would in JavaScript. Without it, such work
+/// waits for the next await from outside the queue.
+pub fn background() -> Background {
+    Background(())
+}
+
+pub struct Background(());
+
+impl Future for Background {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+        let queue = queue();
+        if queue.in_task(cx.waker()) {
+            return Poll::Pending;
+        }
+        queue.remote.park(cx.waker());
+        while queue.run_one() {}
+        Poll::Pending
     }
 }
 
@@ -326,14 +379,12 @@ impl<F: Future> Future for Settle<F> {
             return self.future.as_mut().poll(cx);
         }
         queue.remote.park(cx.waker());
-        loop {
-            if let Poll::Ready(out) = self.future.as_mut().poll(cx) {
-                queue.drain();
-                return Poll::Ready(out);
+        match self.future.as_mut().poll(cx) {
+            Poll::Ready(out) => {
+                queue.run_queued_now();
+                Poll::Ready(out)
             }
-            if !queue.drain() {
-                return Poll::Pending;
-            }
+            Poll::Pending => Poll::Pending,
         }
     }
 }
@@ -436,6 +487,10 @@ where
 {
     /// Starts when first awaited.
     pub fn new(future: F) -> Self {
+        Self::new_in(SharedState::Pending(Box::pin(future)))
+    }
+
+    fn new_in(state: SharedState<F>) -> Self {
         let wakers = Arc::new(Wakers {
             task: NEXT_TASK.fetch_add(1, Ordering::Relaxed),
             needs_poll: AtomicBool::new(true),
@@ -444,12 +499,23 @@ where
         });
         Self {
             inner: Rc::new(SharedInner {
-                state: RefCell::new(SharedState::Pending(Box::pin(future))),
+                state: RefCell::new(state),
                 waker: Waker::from(wakers.clone()),
                 wakers,
                 queued: Cell::new(false),
             }),
         }
+    }
+
+    /// Already finished with `value`, like `Promise.resolve(value)`.
+    pub fn ready(value: F::Output) -> Self {
+        let shared = Self::new_in(SharedState::Done(value));
+        shared
+            .inner
+            .wakers
+            .needs_poll
+            .store(false, Ordering::Release);
+        shared
     }
 
     /// Queued at once, like a JavaScript promise: it runs the next time the thread's queue runs,
@@ -504,7 +570,12 @@ where
             return Poll::Pending;
         }
         queue.remote.park(cx.waker());
-        queue.drain();
+        queue.drive(&|| {
+            matches!(
+                *inner.state.borrow(),
+                SharedState::Done(_) | SharedState::Poisoned
+            )
+        });
         match look() {
             Some(out) => Poll::Ready(out),
             None => Poll::Pending,

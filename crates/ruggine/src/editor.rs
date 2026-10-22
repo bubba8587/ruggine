@@ -8,7 +8,7 @@ use std::rc::{Rc, Weak};
 
 use crate::Error;
 use crate::fxhash::FxHashMap as HashMap;
-use crate::scope::{ParentRef, Plugin, Scope, ScopeHandle, use_under};
+use crate::scope::{ParentRef, PipeId, Plugin, Scope, ScopeHandle, use_under};
 use crate::types::{ConnectionBase, NodeBase, Schemes};
 
 /// The signals a `NodeEditor` emits; each variant is upstream's `type` string in CamelCase.
@@ -206,15 +206,20 @@ impl<S: Schemes> NodeEditor<S> {
         &self.inner.scope
     }
 
-    pub fn add_pipe(&self, pipe: impl Fn(Root<S>) -> Option<Root<S>> + 'static) {
-        self.inner.scope.add_pipe(pipe);
+    pub fn add_pipe(&self, pipe: impl Fn(Root<S>) -> Option<Root<S>> + 'static) -> PipeId {
+        self.inner.scope.add_pipe(pipe)
     }
 
-    pub fn add_async_pipe<F>(&self, pipe: impl Fn(Root<S>) -> F + 'static)
+    pub fn add_async_pipe<F>(&self, pipe: impl Fn(Root<S>) -> F + 'static) -> PipeId
     where
         F: std::future::Future<Output = Option<Root<S>>> + 'static,
     {
-        self.inner.scope.add_async_pipe(pipe);
+        self.inner.scope.add_async_pipe(pipe)
+    }
+
+    /// Takes a pipe added with [`NodeEditor::add_pipe`] out of the chain (upstream can't).
+    pub fn remove_pipe(&self, id: PipeId) -> bool {
+        self.inner.scope.remove_pipe(id)
     }
 
     pub async fn emit(&self, context: Root<S>) -> Option<Root<S>> {

@@ -111,12 +111,8 @@ where
         Self { inner }
     }
 
-    fn dataflow(&self) -> Result<Dataflow<S, V>, Error> {
-        self.inner
-            .dataflow
-            .borrow()
-            .clone()
-            .ok_or(Error::NotAttached("DataflowEngine"))
+    fn attached(&self) -> Result<Dataflow<S, V>, Error> {
+        self.dataflow().ok_or(Error::NotAttached("DataflowEngine"))
     }
 
     fn editor(&self) -> Result<NodeEditor<S>, Error> {
@@ -130,7 +126,7 @@ where
     }
 
     fn add(&self, node: Rc<S::Node>) {
-        let Ok(dataflow) = self.dataflow() else {
+        let Ok(dataflow) = self.attached() else {
             return;
         };
         let ports = match &self.inner.configure {
@@ -174,9 +170,21 @@ where
     }
 
     fn remove(&self, node_id: &str) {
-        if let Ok(dataflow) = self.dataflow() {
+        if let Ok(dataflow) = self.attached() {
             dataflow.remove(node_id);
         }
+    }
+
+    /// The cache of each node's run, upstream's `engine.cache`: delete an entry to make the node
+    /// run again, or patch in a [`Cancellable::resolved`] to give it a result without running.
+    /// Deleting cancels a run in flight.
+    pub fn cache(&self) -> &Cache<String, Cancellable<Rc<Outputs<V>>>> {
+        &self.inner.cache
+    }
+
+    /// Upstream's `engine.dataflow`, once attached.
+    pub fn dataflow(&self) -> Option<Dataflow<S, V>> {
+        self.inner.dataflow.borrow().clone()
     }
 
     /// Clears the cached data of `node_id` and of every node downstream of it through the
@@ -187,7 +195,7 @@ where
             self.inner.cache.clear();
             return Ok(());
         };
-        let dataflow = self.dataflow()?;
+        let dataflow = self.attached()?;
         let editor = self.editor()?;
         let mut visited = FxHashSet::default();
         let mut work = vec![start.to_owned()];
@@ -211,7 +219,7 @@ where
 
     /// The node's inputs, fetching every predecessor.
     pub fn fetch_inputs(&self, node_id: &str) -> LocalBoxFuture<'static, Result<Inputs<V>, Error>> {
-        match self.dataflow() {
+        match self.attached() {
             Ok(dataflow) => Box::pin(settle(dataflow.fetch_inputs(node_id))),
             Err(e) => Box::pin(std::future::ready(Err(e))),
         }
@@ -219,7 +227,7 @@ where
 
     /// The node's outputs, from the cache when present.
     pub fn fetch(&self, node_id: &str) -> DataFuture<V> {
-        match self.dataflow() {
+        match self.attached() {
             Ok(dataflow) => Box::pin(settle(dataflow.fetch(node_id))),
             Err(e) => Box::pin(std::future::ready(Err(e))),
         }

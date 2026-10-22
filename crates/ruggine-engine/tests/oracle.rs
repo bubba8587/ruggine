@@ -13,7 +13,8 @@ use ruggine::{
     BaseSchemes, ConnectionBase, GetSchemes, KeyMap, NodeBase, NodeEditor, Root, keymap,
 };
 use ruggine_engine::{
-    ControlFlow, ControlFlowNodeSetup, DataflowEngine, DataflowNode, Error, Inputs, Outputs,
+    Cancellable, ControlFlow, ControlFlowNodeSetup, DataflowEngine, DataflowNode, Error, Inputs,
+    Outputs,
 };
 use serde_json::{Value, json};
 
@@ -794,3 +795,17 @@ fn a_blocking_fetch_inside_a_nodes_data_finishes() {
     block_on(g.engine.fetch("E")).unwrap();
     assert_eq!(g.log(), ["A", "inner: true"]);
 }
+
+oracle!(seeded_cache, {
+    let g = chain(false, false);
+    let seeded = Cancellable::resolved(Ok(Rc::new(keymap! { "o" => json!("seeded") })));
+    g.engine.cache().add("B".into(), seeded).unwrap();
+    let first = block_on(g.engine.fetch("D")).unwrap();
+    let inputs = block_on(g.engine.fetch_inputs("D")).unwrap();
+    let log1 = g.log();
+    g.log.borrow_mut().clear();
+    g.engine.cache().delete("B");
+    g.engine.cache().delete("D");
+    block_on(g.engine.fetch("D")).unwrap();
+    json!({ "log1": log1, "inputs": to_json(&inputs), "first": to_json(&first), "log2": g.log() })
+});
