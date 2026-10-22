@@ -1,7 +1,7 @@
 # Port plan
 
 What gets ported, where it lands, and the questions the first port session has to answer.
-Governed by [[A2]] solenoidFirst (Solenoid's surface first) and [[B1]] upstreamIsSpec (tests
+Governed by [[A3]] portEverything (all of upstream, Solenoid's surface first) and [[B1]] upstreamIsSpec (tests
 before code). Delete each row's "open" status as it lands; delete this file when the table is
 all done and the questions are all leaves.
 
@@ -20,10 +20,11 @@ it (`grep -rhoE "editor\.(\w+)\(" src | sort | uniq -c` in Solenoid).
 | `DataflowEngine` | `fetch`, `reset` | `fetchInputs` unused; 7 node files have an `async data()` |
 | `GetSchemes`, `Root` | types | the scheme generics |
 
-Not used by Solenoid, so not ported until something needs it: `ClassicPreset.Control` and
+Not used by Solenoid, so ported after the rows above: `ClassicPreset.Control` and
 `InputControl` (and the `addControl` family on `Node` and `Input`), `ControlFlowEngine` and
-`ControlFlow`, `Scope.parentScope` beyond what `DataflowEngine` needs, and the type-level
-signal checks in `utility-types.ts` / `NestedScope` / `useHelper`.
+`ControlFlow`, and the rest of `Scope.parentScope`. The type-level signal checks in
+`utility-types.ts` / `NestedScope` / `useHelper` are compile-time TypeScript tricks; their Rust
+counterpart is whatever trait bounds the scope design lands on, not a line-by-line port.
 
 ## Module map
 
@@ -33,17 +34,19 @@ signal checks in `utility-types.ts` / `NestedScope` / `useHelper`.
 | `rete/src/utils.ts` (`getUID`) | 16 | `ruggine::uid` | yes | open |
 | `rete/src/scope.ts` (`Signal`, `Scope`, pipes) | 129 | `ruggine::scope` | yes | open |
 | `rete/src/editor.ts` (`NodeEditor`, `Root`) | 174 | `ruggine::editor` | yes | open |
-| `rete/src/presets/classic.ts` (`Socket`, `Port`, `Input`, `Output`, `Node`, `Connection`) | 291 | `ruggine::classic` | yes, minus controls | open |
-| `rete/src/utility-types.ts` | 58 | none: type-level TS checks | no | skip |
+| `rete/src/presets/classic.ts` (`Socket`, `Port`, `Input`, `Output`, `Node`, `Connection`, controls) | 291 | `ruggine::classic` | yes, controls no | open |
+| `rete/src/utility-types.ts` | 58 | trait bounds in `ruggine::scope` | no | open |
 | `rete-engine/src/dataflow.ts` | 115 | `ruggine_engine::dataflow` | yes | open |
 | `rete-engine/src/dataflow-engine.ts` | 135 | `ruggine_engine::engine` | yes | open |
 | `rete-engine/src/utils/cache.ts` | 34 | `ruggine_engine::cache` | yes | open |
 | `rete-engine/src/utils/cancellable.ts` | 49 | depends on the async question below | yes | open |
-| `rete-engine/src/control-flow*.ts` | 154 | none yet | no | skip |
+| `rete-engine/src/control-flow.ts`, `control-flow-engine.ts` | 154 | `ruggine_engine::control_flow` | no | open |
 
 Upstream tests to translate first, per module: `rete/test/{index,scope,utils}.test.ts`,
 `rete/test/presets/classic.test.ts`, `rete-engine/test/{dataflow,dataflow-engine}.test.ts`,
-`rete-engine/test/utils/{cache,cancellable}.test.ts`. They land in each crate's `tests/`.
+`rete-engine/test/utils/{cache,cancellable}.test.ts`, then `rete-engine/test/{control-flow,control-flow-engine}.test.ts`.
+`rete/test/index.perf.ts` becomes a bench, and `rete-engine/test/types.test-d.ts` (type-level
+assertions) becomes compile checks where the Rust types can express them. They land in each crate's `tests/`.
 
 ## Questions for the first port session
 

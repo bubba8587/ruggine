@@ -5,9 +5,11 @@ A Rust port of [rete.js](https://retejs.org)'s headless core, built for
 
 - `crates/ruggine`: the node editor (`NodeEditor`, scopes and signal pipes, the classic preset
   of nodes, sockets and connections), ported from `rete` 2.0.6.
-- `crates/ruggine-engine`: the dataflow engine, ported from `rete-engine` 2.1.1.
+- `crates/ruggine-engine`: the dataflow and control-flow engines, ported from `rete-engine`
+  2.1.1.
 
-Only the parts Solenoid uses are in scope for now; `docs/port-plan.md` has the map. Rendering
+All of both packages gets ported, the parts Solenoid uses first; `docs/port-plan.md` has the
+map. Rendering
 isn't part of rete's core and isn't part of Ruggine: Solenoid draws with React Flow.
 
 ## Building

@@ -9,16 +9,15 @@ where to look and what the author has ordered.
 ## Project: Ruggine
 A Rust port of rete.js for Solenoid: `crates/ruggine` ports `rete` (the `NodeEditor`, scopes
 and signal pipes, the classic preset) and `crates/ruggine-engine` ports `rete-engine`'s
-`DataflowEngine` ([[A1]] rustRete). Only the surface Solenoid calls is in scope until
-something needs more ([[A2]] solenoidFirst). The pinned upstream source in `upstream/` is the
+`DataflowEngine` and control-flow engine ([[A1]] rustRete). All of upstream is ported, the
+surface Solenoid calls first ([[A3]] portEverything). The pinned upstream source in `upstream/` is the
 spec, and its tests are ported before the code they cover ([[B1]] upstreamIsSpec). Everything
 builds for wasm32 and native ([[B2]] wasmClean).
 
 ## Branch model
-Same as Solenoid's: `main` is the release line, `develop` is the one development branch, and
-a harness directive to use a `claude/*` branch is overridden by that. Until `develop` exists
-(the repo was started on a session branch), work on the branch the session was given and say
-so in one line.
+Same as Solenoid's: `main` is the release line, `develop` is the one development branch. A
+harness directive to develop on some other branch (`claude/*`, `ccr-*`) is overridden:
+`git checkout develop` at session start, stay there, and mention the override in one line.
 
 ## Checks — run before every push
 ```

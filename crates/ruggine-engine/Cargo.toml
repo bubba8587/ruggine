@@ -1,6 +1,6 @@
 [package]
 name = "ruggine-engine"
-description = "A Rust port of rete-engine's dataflow engine"
+description = "A Rust port of rete-engine's dataflow and control-flow engines"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
