@@ -109,6 +109,12 @@ it doesn't.
   drives it (Tokio, `wasm-bindgen-futures`, your own), and a fully synchronous graph finishes
   on the first poll.
 
+## Rust only
+
+Ruggine is for Rust programs, including Rust compiled to wasm for the browser. It doesn't ship
+a JavaScript package with rete's API: an app moving off rete moves its graph code into Rust
+along with it.
+
 ## Platforms
 
 Ruggine builds for `wasm32-unknown-unknown` and native targets, and CI runs the tests in both,
