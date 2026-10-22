@@ -30,5 +30,8 @@ Open problems and the latest session digests. Older digests move to
   - Beyond rete: `remove_pipe`, `future::background()`.
   - `docs/migrating-from-rete.md` maps every symbol, and `solenoid_patterns.rs` runs
     Solenoid's own rete patterns.
+- Third round: the engines run any node type given a `with_configure` (only `new()` needs
+  `ClassicNode`), which Solenoid's JS-hosted nodes need; `tests/configure.rs`. Solenoid's
+  `solenoid/tsrs` now runs its dataflow on Ruggine, pinned by git revision.
 - Settled by the author: Ruggine is Rust-only ([[B10]] rustOnly); Solenoid reaches it by moving
   its graph layer into its Rust core.
