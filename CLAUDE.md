@@ -25,6 +25,7 @@ cargo fmt --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo build --workspace --target wasm32-unknown-unknown
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace
 python3 tools/dte.py validate --as B
 ```
 CI (`.github/workflows/ci.yml`) runs the same list, plus two jobs:

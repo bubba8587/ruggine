@@ -18,6 +18,9 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
       - run: cargo build --workspace --target wasm32-unknown-unknown
+      - run: cargo doc --no-deps --workspace
+        env:
+          RUSTDOCFLAGS: -D warnings
       - run: python3 tools/dte.py validate --as B
 
   wasm:
