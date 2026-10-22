@@ -8,8 +8,8 @@ A Rust port of [rete.js](https://retejs.org)'s headless core, built for
 - `crates/ruggine-engine`: the dataflow and control-flow engines, ported from `rete-engine`
   2.1.1.
 
-All of both packages gets ported, the parts Solenoid uses first; `docs/port-plan.md` has the
-map. Rendering
+Both packages are ported in full, upstream's test suites included. `tree/specs/port.md` maps
+every upstream module onto the Rust and lists where the Rust differs and why. Rendering
 isn't part of rete's core and isn't part of Ruggine: Solenoid draws with React Flow.
 
 ## Building
