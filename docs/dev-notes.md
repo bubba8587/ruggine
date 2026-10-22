@@ -21,3 +21,13 @@ Open problems and the latest session digests. Older digests move to
   browser backend.
 - Open: control flow stays recursive by contract (`port.md` § Futures); a fetched cycle never
   finishes and isn't freed, as upstream's never finishes.
+- Second round:
+  - Random sequences recorded from upstream (`tools/oracle/fuzz.cjs`, 600 cases) are replayed
+    by `oracle_fuzz.rs`; the guarantee they hold Ruggine to is in `tree/specs/port.md` §
+    Futures.
+  - Parity: `engine.cache()` / `dataflow()`, `ControlFlowEngine::control_flow()`,
+    `Cancellable::resolved`.
+  - Beyond rete: `remove_pipe`, `future::background()`.
+  - `docs/migrating-from-rete.md` maps every symbol, and `solenoid_patterns.rs` runs
+    Solenoid's own rete patterns.
+- Open: whether Ruggine gets a JS face (`docs/backlog.md`).
