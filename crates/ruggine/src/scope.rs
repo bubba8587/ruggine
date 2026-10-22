@@ -159,6 +159,7 @@ pub trait ScopeHandle: Clone + 'static {
 /// A scope that can be attached under a parent scope whose signals are `P`. The parent keeps a
 /// clone, so the plugin lives as long as its parent does.
 pub trait Plugin<P>: Clone + 'static {
+    /// The plugin's whole signal type: its own signals and its parent's.
     type Signal: Accepts<P> + 'static;
 
     fn scope(&self) -> &Scope<Self::Signal>;
@@ -170,7 +171,7 @@ pub trait Plugin<P>: Clone + 'static {
     }
 }
 
-pub struct ScopeInner<T> {
+struct ScopeInner<T> {
     name: String,
     signal: Signal<T>,
     parent: RefCell<Option<ParentRef>>,

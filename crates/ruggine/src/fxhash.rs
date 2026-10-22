@@ -8,6 +8,7 @@ use std::hash::{BuildHasherDefault, Hasher};
 const SEED: u64 = 0x51_7c_c1_b7_27_22_0a_95;
 
 #[derive(Default, Clone, Copy)]
+/// The Fx hasher.
 pub struct FxHasher {
     hash: u64,
 }
@@ -57,6 +58,9 @@ impl Hasher for FxHasher {
     }
 }
 
+/// Builds [`FxHasher`]s.
 pub type FxBuild = BuildHasherDefault<FxHasher>;
+/// A `HashMap` hashing with Fx.
 pub type FxHashMap<K, V> = HashMap<K, V, FxBuild>;
+/// A `HashSet` hashing with Fx.
 pub type FxHashSet<K> = HashSet<K, FxBuild>;

@@ -3,19 +3,32 @@
 
 use std::fmt;
 
+/// Each variant's `Display` is upstream's message.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
+    /// A node with that id is already in the editor.
     NodeAlreadyAdded,
+    /// A connection with that id is already in the editor.
     ConnectionAlreadyAdded,
+    /// No node with that id.
     NodeNotFound,
+    /// No connection with that id.
     ConnectionNotFound,
+    /// The node already has an input under that key.
     InputAlreadyAdded(String),
+    /// The node already has an output under that key.
     OutputAlreadyAdded(String),
+    /// The node already has a control under that key.
     ControlAlreadyAdded(String),
+    /// The input already has a control.
     InputControlAlreadyAdded,
+    /// A connection's source node has no output under that key.
     NoSourceOutput(String),
+    /// A connection's target node has no input under that key.
     NoTargetInput(String),
+    /// The scope has no parent, or its parent is gone.
     NoParent,
+    /// The parent is not of the asked-for type.
     ParentTypeMismatch,
 }
 

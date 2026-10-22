@@ -10,6 +10,7 @@ use crate::Error;
 
 type OnDelete<T> = Box<dyn Fn(Option<T>)>;
 
+/// rete-engine's `Cache`.
 pub struct Cache<K, T> {
     items: RefCell<HashMap<K, T>>,
     on_delete: Option<OnDelete<T>>,

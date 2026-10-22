@@ -5,6 +5,8 @@
 use std::borrow::Borrow;
 use std::fmt;
 
+/// Iterates in JavaScript's property order; lookups scan, which suits the handful of keys a
+/// node's ports or data hold.
 #[derive(Clone, PartialEq)]
 pub struct KeyMap<V> {
     entries: Vec<(String, V)>,

@@ -10,10 +10,14 @@ use std::rc::Rc;
 use crate::types::{ConnectionBase, GetSchemes, NodeBase, NodeId};
 use crate::{Error, KeyMap, get_uid};
 
+/// Upstream's `PortId`.
 pub type PortId = String;
 
+/// Upstream's `Socket`: what kind of value a port carries. Use your own type in its place for
+/// richer sockets (`Node<MySocket>`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Socket {
+    /// The socket's name.
     pub name: String,
 }
 
@@ -25,6 +29,7 @@ impl Socket {
 
 /// What inputs and outputs share.
 pub struct Port<S = Socket> {
+    /// A fresh [`get_uid`] on creation.
     pub id: PortId,
     socket: RefCell<Rc<S>>,
     label: RefCell<Option<String>>,
@@ -77,6 +82,7 @@ impl<S> Port<S> {
     }
 }
 
+/// Upstream's `Input`: a port values arrive on, with an optional control.
 pub struct Input<S = Socket> {
     port: Port<S>,
     control: RefCell<Option<Rc<dyn AnyControl>>>,
@@ -144,6 +150,7 @@ impl<S> Deref for Input<S> {
     }
 }
 
+/// Upstream's `Output`: a port values leave by.
 pub struct Output<S = Socket> {
     port: Port<S>,
 }
@@ -178,6 +185,7 @@ impl<S> Deref for Output<S> {
 /// Upstream's base `Control` class.
 #[derive(Debug)]
 pub struct Control {
+    /// A fresh [`get_uid`] on creation.
     pub id: String,
     index: Cell<Option<f64>>,
 }
@@ -222,17 +230,25 @@ pub fn downcast_control<C: AnyControl>(control: Rc<dyn AnyControl>) -> Option<Rc
     control.downcast::<C>().ok()
 }
 
+/// Upstream's `InputControl` type parameter: `'text'` or `'number'`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputControlKind {
+    /// Holds text.
     Text,
+    /// Holds a number.
     Number,
 }
 
+/// Called with the new value after every [`InputControl::set_value`].
 pub type ChangeCallback<N> = Box<dyn Fn(Option<&N>)>;
 
+/// Upstream's `InputControlOptions`.
 pub struct InputControlOptions<N> {
+    /// Whether the control is read-only (default `false`).
     pub readonly: bool,
+    /// The starting value.
     pub initial: Option<N>,
+    /// Called after every change.
     pub change: Option<ChangeCallback<N>>,
 }
 
@@ -249,6 +265,7 @@ impl<N> Default for InputControlOptions<N> {
 /// Upstream's `InputControl`: a text control holds a `String`, a number control an `f64`.
 pub struct InputControl<N> {
     control: Control,
+    /// Text or number.
     pub kind: InputControlKind,
     value: RefCell<Option<N>>,
     readonly: Cell<bool>,
@@ -322,6 +339,7 @@ impl<N> Deref for InputControl<N> {
 
 /// Upstream's classic `Node`. Ports and controls change in place, through `&self`.
 pub struct Node<S = Socket> {
+    /// A fresh [`get_uid`] on creation; set your own before sharing the node, if you like.
     pub id: NodeId,
     label: RefCell<String>,
     inputs: RefCell<KeyMap<Rc<Input<S>>>>,
@@ -499,6 +517,7 @@ impl<S> NodeBase for Node<S> {
 /// A node built on the classic `Node`: what the engines and [`Connection::new`] read ports from.
 /// A wrapper type returns its inner `Node`.
 pub trait ClassicNode: NodeBase {
+    /// The socket type of the node's ports.
     type Socket;
 
     fn classic(&self) -> &Node<Self::Socket>;
@@ -512,12 +531,18 @@ impl<S> ClassicNode for Node<S> {
     }
 }
 
+/// Upstream's classic `Connection`: from one node's output to another node's input.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Connection {
+    /// A fresh [`get_uid`] on creation.
     pub id: String,
+    /// The source node's id.
     pub source: NodeId,
+    /// The target node's id.
     pub target: NodeId,
+    /// The key of the source's output.
     pub source_output: String,
+    /// The key of the target's input.
     pub target_input: String,
 }
 
@@ -577,4 +602,5 @@ impl ClassicConnection for Connection {
     }
 }
 
+/// rete-engine's `ClassicScheme`: classic nodes and connections.
 pub type ClassicScheme = GetSchemes<Node, Connection>;

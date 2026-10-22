@@ -7,6 +7,9 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.86"
 license = "MIT"
+repository = "https://github.com/bubba8587/ruggine"
+keywords = ["node-editor", "dataflow", "graph", "rete", "visual-programming"]
+categories = ["data-structures", "asynchronous", "wasm"]
 publish = false
 
 [workspace.lints.rust]

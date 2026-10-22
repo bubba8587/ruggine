@@ -12,6 +12,7 @@ use std::task::{Context, Poll, Wake, Waker};
 
 use crate::fxhash::FxHashMap as HashMap;
 
+/// A boxed, single-threaded future.
 pub type LocalBoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
 
 /// A boxed future that is already finished, for synchronous implementations of async hooks.
@@ -56,6 +57,7 @@ enum Slot<F: Future> {
     Taken,
 }
 
+/// See [`join_all`].
 pub struct JoinAll<F: Future> {
     slots: Vec<Slot<F>>,
 }
@@ -112,6 +114,7 @@ impl<F: Future> Future for JoinAll<F> {
     }
 }
 
+/// See [`try_join_all`].
 pub struct TryJoinAll<F: Future> {
     inner: JoinAll<F>,
 }
@@ -339,6 +342,7 @@ pub fn background() -> Background {
     Background(())
 }
 
+/// See [`background`].
 pub struct Background(());
 
 impl Future for Background {
@@ -364,6 +368,7 @@ pub fn settle<F: Future>(future: F) -> Settle<F> {
     }
 }
 
+/// See [`settle`].
 pub struct Settle<F: Future> {
     future: Pin<Box<F>>,
 }

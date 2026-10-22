@@ -24,7 +24,9 @@ pub trait DataflowNode<V> {
 
 /// Which of a node's inputs and outputs take part in the dataflow.
 pub struct PortSelection {
+    /// The inputs that take part.
     pub inputs: Keys,
+    /// The outputs that take part.
     pub outputs: Keys,
 }
 

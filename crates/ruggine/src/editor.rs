@@ -11,18 +11,31 @@ use crate::fxhash::FxHashMap as HashMap;
 use crate::scope::{ParentRef, PipeId, Plugin, Scope, ScopeHandle, use_under};
 use crate::types::{ConnectionBase, NodeBase, Schemes};
 
-/// The signals a `NodeEditor` emits; each variant is upstream's `type` string in CamelCase.
+/// The signals a `NodeEditor` emits, upstream's `Root`; each variant is upstream's `type`
+/// string in CamelCase. The present-tense signal comes before the change, and a pipe returning
+/// `None` for it cancels the change; the past-tense one comes after.
 pub enum Root<S: Schemes> {
+    /// A node is about to be added.
     NodeCreate(Rc<S::Node>),
+    /// A node was added.
     NodeCreated(Rc<S::Node>),
+    /// A node is about to be removed.
     NodeRemove(Rc<S::Node>),
+    /// A node was removed.
     NodeRemoved(Rc<S::Node>),
+    /// A connection is about to be added.
     ConnectionCreate(Rc<S::Connection>),
+    /// A connection was added.
     ConnectionCreated(Rc<S::Connection>),
+    /// A connection is about to be removed.
     ConnectionRemove(Rc<S::Connection>),
+    /// A connection was removed.
     ConnectionRemoved(Rc<S::Connection>),
+    /// The editor is about to be cleared.
     Clear,
+    /// A pipe cancelled a clear.
     ClearCancelled,
+    /// The editor was cleared.
     Cleared,
 }
 
@@ -164,7 +177,7 @@ impl Links {
     }
 }
 
-pub struct EditorInner<S: Schemes> {
+struct EditorInner<S: Schemes> {
     scope: Scope<Root<S>>,
     nodes: RefCell<Store<S::Node>>,
     connections: RefCell<Store<S::Connection>>,

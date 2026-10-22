@@ -19,8 +19,11 @@ type Execute = Box<dyn Fn(Option<&str>, Forward<'_>) -> Result<(), Error>>;
 /// How the control flow runs one node: `execute` gets the input control arrived on (`None`
 /// when the run starts here).
 pub struct ControlFlowNodeSetup {
+    /// The inputs control can arrive on.
     pub inputs: Keys,
+    /// The outputs control can leave by.
     pub outputs: Keys,
+    /// Runs the node.
     pub execute: Execute,
 }
 

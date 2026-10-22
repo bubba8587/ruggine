@@ -19,6 +19,7 @@ pub type Outputs<V> = KeyMap<V>;
 /// with no connections is absent.
 pub type Inputs<V> = KeyMap<Vec<V>>;
 
+/// A node's outputs, once computed.
 pub type DataFuture<V> = LocalBoxFuture<'static, Result<Rc<Outputs<V>>, Error>>;
 /// Fetches the node's inputs when called; may be called more than once.
 pub type FetchInputs<V> = Box<dyn Fn() -> LocalBoxFuture<'static, Result<Inputs<V>, Error>>>;
@@ -27,8 +28,11 @@ pub type Keys = Box<dyn Fn() -> Rc<[String]>>;
 
 /// How the dataflow processes one node.
 pub struct DataflowNodeSetup<V> {
+    /// The inputs whose connections are fetched.
     pub inputs: Keys,
+    /// The outputs the node must return.
     pub outputs: Keys,
+    /// Computes the node's outputs, fetching its inputs if it wants them.
     pub data: Box<dyn Fn(FetchInputs<V>) -> DataFuture<V>>,
 }
 

@@ -4,16 +4,22 @@
 use std::fmt;
 use std::rc::Rc;
 
+/// Each variant's `Display` is upstream's message where upstream has one.
 #[derive(Clone, Debug)]
 pub enum Error {
     /// Upstream's `Cancelled`: `reset` ran while the fetch was in flight.
     Cancelled,
+    /// The node is already set up in this dataflow or control flow.
     AlreadyProcessed,
+    /// The node has no setup: it isn't in the editor, or was added before the engine.
     NotInitialized,
     /// A node's data lacks outputs its setup requires.
     MissingOutputs {
+        /// The node.
         node_id: String,
+        /// The outputs its setup requires.
         expected: Vec<String>,
+        /// The outputs it returned.
         got: Vec<String>,
     },
     /// `reset` met a node with no setup.
@@ -22,9 +28,13 @@ pub enum Error {
     NotAttached(&'static str),
     /// The editor an engine reads from has been dropped.
     EditorDropped,
+    /// Control arrived on an input the node's setup doesn't list.
     UnknownInput,
+    /// A node forwarded control through an output its setup doesn't list.
     UnknownOutput,
+    /// The cache already holds that key.
     CacheExists,
+    /// An editor error.
     Core(ruggine::Error),
     /// Whatever a node's own work failed with.
     Node(Rc<dyn std::error::Error>),
