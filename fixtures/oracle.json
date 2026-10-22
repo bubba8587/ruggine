@@ -166,5 +166,127 @@
       "c:end",
       "a:end"
     ]
+  },
+  "async_mixed": {
+    "log": [
+      "C<",
+      "A<",
+      "A>",
+      "C>",
+      "B",
+      "D"
+    ],
+    "out": {
+      "o": "D"
+    }
+  },
+  "concurrent_chains": {
+    "log": [
+      "X1<",
+      "Y1<",
+      "X1>",
+      "Y1>",
+      "X2<",
+      "Y2<",
+      "X2>",
+      "Y2>"
+    ]
+  },
+  "concurrent_sync_nodes": {
+    "log": [
+      "C",
+      "A",
+      "B"
+    ]
+  },
+  "same_node_twice": {
+    "log": [
+      "C",
+      "A",
+      "B",
+      "D"
+    ],
+    "same": true
+  },
+  "reset_inside_data": {
+    "error": "cancelled",
+    "log1": [
+      "C",
+      "A",
+      "B"
+    ],
+    "log2": [
+      "A",
+      "B",
+      "D"
+    ]
+  },
+  "reset_all_inside_data": {
+    "error": "cancelled",
+    "log2": [
+      "C",
+      "A",
+      "B",
+      "D"
+    ]
+  },
+  "deep_error": {
+    "error": "fail N3",
+    "log": [
+      "N1<",
+      "N1>",
+      "N2",
+      "N3"
+    ]
+  },
+  "fetch_inputs_missing_setup": {
+    "error": "node is not initialized",
+    "log": [
+      "C"
+    ]
+  },
+  "error_beside_waiting": {
+    "error": "fail C",
+    "log1": [
+      "B<",
+      "C"
+    ],
+    "log2": [
+      "B<",
+      "C",
+      "B>"
+    ],
+    "out": {
+      "o": "B"
+    }
+  },
+  "reset_while_waiting": {
+    "error": "cancelled",
+    "log1": [
+      "C",
+      "A<",
+      "A>"
+    ],
+    "log2": [
+      "B",
+      "D"
+    ]
+  },
+  "fetch_inside_data": {
+    "log": [
+      "E<",
+      "C",
+      "A<",
+      "A>",
+      "E>"
+    ],
+    "out": {
+      "e": [
+        "EA"
+      ],
+      "c": [
+        "C"
+      ]
+    }
   }
 }

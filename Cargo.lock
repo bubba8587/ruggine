@@ -206,6 +206,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ruggine-bench"
+version = "0.1.0"
+dependencies = [
+ "ruggine",
+ "ruggine-engine",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "ruggine-engine"
 version = "0.1.0"
 dependencies = [

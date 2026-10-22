@@ -3,7 +3,7 @@
 
 use std::any::Any;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::rc::{Rc, Weak};
 
 use crate::Error;
@@ -68,30 +68,38 @@ impl<S: Schemes> std::fmt::Debug for Root<S> {
     }
 }
 
-/// Items in insertion order beside an id index.
+/// Items in insertion order beside an id index. A removal leaves a gap that a later compaction
+/// closes, so removing is constant time on average where shifting the list would be linear.
 struct Store<T: ?Sized> {
-    items: Vec<Rc<T>>,
-    ids: Vec<String>,
+    slots: Vec<Option<(String, Rc<T>)>>,
     index: HashMap<String, usize>,
+    live: usize,
 }
 
 impl<T: ?Sized> Store<T> {
     fn new() -> Self {
         Self {
-            items: Vec::new(),
-            ids: Vec::new(),
+            slots: Vec::new(),
             index: HashMap::new(),
+            live: 0,
         }
     }
 
     fn get(&self, id: &str) -> Option<Rc<T>> {
-        self.index.get(id).map(|&i| self.items[i].clone())
+        let &at = self.index.get(id)?;
+        self.slots[at].as_ref().map(|(_, item)| item.clone())
+    }
+
+    fn items(&self) -> Vec<Rc<T>> {
+        let mut items = Vec::with_capacity(self.live);
+        items.extend(self.slots.iter().flatten().map(|(_, item)| item.clone()));
+        items
     }
 
     fn push(&mut self, id: String, item: Rc<T>) {
-        self.index.insert(id.clone(), self.items.len());
-        self.ids.push(id);
-        self.items.push(item);
+        self.index.insert(id.clone(), self.slots.len());
+        self.slots.push(Some((id, item)));
+        self.live += 1;
     }
 
     /// Removes `item` itself, wherever it sits now; `false` if it is no longer stored.
@@ -99,42 +107,54 @@ impl<T: ?Sized> Store<T> {
         let Some(&at) = self.index.get(id) else {
             return false;
         };
-        if !Rc::ptr_eq(&self.items[at], item) {
+        if !self.slots[at]
+            .as_ref()
+            .is_some_and(|(_, held)| Rc::ptr_eq(held, item))
+        {
             return false;
         }
         self.index.remove(id);
-        self.ids.remove(at);
-        self.items.remove(at);
-        for (i, id) in self.ids.iter().enumerate().skip(at) {
-            self.index.insert(id.clone(), i);
+        self.slots[at] = None;
+        self.live -= 1;
+        if self.slots.len() > 64 && self.live * 2 < self.slots.len() {
+            self.slots.retain(Option::is_some);
+            for (i, (id, _)) in self.slots.iter().flatten().enumerate() {
+                *self.index.get_mut(id).expect("indexed") = i;
+            }
         }
         true
     }
 }
 
-/// Connection ids by the node they leave and the node they enter, each in connection order.
+/// Connection ids by the node they leave and the node they enter, each kept in the order the
+/// connections were added.
 #[derive(Default)]
 struct Links {
-    from: HashMap<String, Vec<String>>,
-    to: HashMap<String, Vec<String>>,
+    next: u64,
+    order: HashMap<String, u64>,
+    from: HashMap<String, BTreeMap<u64, String>>,
+    to: HashMap<String, BTreeMap<u64, String>>,
 }
 
 impl Links {
     fn add(&mut self, id: &str, source: &str, target: &str) {
-        self.from
-            .entry(source.to_owned())
-            .or_default()
-            .push(id.to_owned());
-        self.to
-            .entry(target.to_owned())
-            .or_default()
-            .push(id.to_owned());
+        let seq = self.next;
+        self.next += 1;
+        self.order.insert(id.to_owned(), seq);
+        for (map, node) in [(&mut self.from, source), (&mut self.to, target)] {
+            map.entry(node.to_owned())
+                .or_default()
+                .insert(seq, id.to_owned());
+        }
     }
 
     fn remove(&mut self, id: &str, source: &str, target: &str) {
+        let Some(seq) = self.order.remove(id) else {
+            return;
+        };
         for (map, node) in [(&mut self.from, source), (&mut self.to, target)] {
             if let Some(ids) = map.get_mut(node) {
-                ids.retain(|i| i != id);
+                ids.remove(&seq);
                 if ids.is_empty() {
                     map.remove(node);
                 }
@@ -211,7 +231,7 @@ impl<S: Schemes> NodeEditor<S> {
 
     /// A copy of the node list, in the order nodes were added.
     pub fn get_nodes(&self) -> Vec<Rc<S::Node>> {
-        self.inner.nodes.borrow().items.clone()
+        self.inner.nodes.borrow().items()
     }
 
     pub fn get_connection(&self, id: &str) -> Option<Rc<S::Connection>> {
@@ -220,7 +240,7 @@ impl<S: Schemes> NodeEditor<S> {
 
     /// A copy of the connection list, in the order connections were added.
     pub fn get_connections(&self) -> Vec<Rc<S::Connection>> {
-        self.inner.connections.borrow().items.clone()
+        self.inner.connections.borrow().items()
     }
 
     /// The connections entering `node_id`, in the order connections were added: the same as
@@ -237,13 +257,13 @@ impl<S: Schemes> NodeEditor<S> {
     fn linked(
         &self,
         node_id: &str,
-        side: impl Fn(&Links) -> &HashMap<String, Vec<String>>,
+        side: impl Fn(&Links) -> &HashMap<String, BTreeMap<u64, String>>,
     ) -> Vec<Rc<S::Connection>> {
         let links = self.inner.links.borrow();
         let store = self.inner.connections.borrow();
         side(&links)
             .get(node_id)
-            .map(|ids| ids.iter().filter_map(|id| store.get(id)).collect())
+            .map(|ids| ids.values().filter_map(|id| store.get(id)).collect())
             .unwrap_or_default()
     }
 

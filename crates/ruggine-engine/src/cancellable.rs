@@ -51,7 +51,7 @@ impl<T: Clone + 'static> Cancellable<T> {
         let future: LocalBoxFuture<'static, Result<T, Error>> =
             Box::pin(steps(Commit(cancelled.clone())));
         Self {
-            shared: Shared::new(future),
+            shared: Shared::spawn(future),
             cancelled,
         }
     }

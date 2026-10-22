@@ -42,7 +42,7 @@ difference not listed here is a bug.
 | `rete-engine/src/utils/cache.ts` | `ruggine_engine::cache` | `cache.rs` |
 | `rete-engine/src/utils/cancellable.ts` | `ruggine_engine::cancellable` | `cancellable.rs` |
 | (JS objects keyed by name) | `ruggine::keymap::KeyMap` | `ruggine/tests/keymap.rs` |
-| (promises, `Promise.all`, the microtask queue) | `ruggine::future` | `ruggine/tests/future.rs` |
+| (promises, `Promise.all`, the microtask queue) | `ruggine::future` | `ruggine/tests/future.rs`, `ruggine-engine/tests/real_wakeups.rs` |
 | (upstream's own answers) | `fixtures/oracle.json` | `ruggine-engine/tests/oracle.rs` |
 
 Names are upstream's in snake_case. A JS method that throws returns `Result`, with upstream's
@@ -54,30 +54,33 @@ values are one type `V` per engine (see Dataflow).
 
 - Async because upstream is: Solenoid has nodes whose data really waits (frames, scripts, live
   connections, composites) and relies on `reset` cancelling a fetch in flight. Futures are
-  `!Send`, single-threaded like JavaScript. Nothing in Ruggine spawns or blocks, so any host's
-  executor can drive them; `future::now_or_never` polls once, and a graph with only synchronous
-  pipes and nodes is always done after it.
+  `!Send`, single-threaded like JavaScript, and nothing in Ruggine spawns threads or blocks: any
+  host's executor drives them, and `future::now_or_never` finishes any graph whose pipes and
+  nodes are synchronous, including from inside a node's `data`.
 - Eager where upstream is eager. A JS async function runs synchronously up to its first `await`,
-  so upstream's `fetch` calls the node's setup (creating and caching its run) and
-  `fetchInputs` starts every predecessor's fetch at call time. `Dataflow::fetch` and
-  `Dataflow::fetch_inputs` do that work when called and only the rest waits for a poll; a
-  `reset` between `fetch` and the first poll cancels it, as upstream.
-- A promise held in several places is `future::Shared`. It runs once and hands each awaiter a
-  clone of the output, so cached outputs are `Rc<Outputs<V>>` and errors are `Clone`. If its
-  work panics, every later await panics too, rather than waiting forever.
-- The engines' `fetch` and `fetch_inputs` run under `future::scheduled`, a queue standing in for
-  JavaScript's microtask queue. A `Shared` awaited under it is never polled inside its awaiter:
-  it is queued, and the driver runs queued work first in, first out. That keeps the stack flat
-  however long the chain of nodes (a 50,000-node chain is tested; nesting polls overflowed a
-  debug build before 1,000), and it reproduces upstream's order of work: on a graph of a
-  chain beside a single node, upstream and Ruggine both run the single node first.
-- When the fetched result is ready, the driver still runs whatever work is already queued before
-  returning, as JS keeps running promises nobody awaits any more. So when two predecessors fail,
-  both have run, and the error is the one that arrived first, as with `Promise.all`. Work
-  waiting on something outside the graph is not waited for; it resumes when next awaited.
+  so upstream's `fetch` calls the node's setup (creating and caching its run) and `fetchInputs`
+  starts every predecessor's fetch at call time. `Dataflow::fetch` and `Dataflow::fetch_inputs`
+  do that work when called, and only the rest waits for a poll; a `reset` between `fetch` and
+  the first poll cancels it, as upstream.
+- JavaScript's microtask queue is `future`'s per-thread queue. A promise held in several places
+  is a `Shared`, a task on that queue; the engine's cached runs are `Shared::spawn`, queued the
+  moment they are created, as a promise starts at once. The queue runs tasks first in, first
+  out, one at a time, so a chain of nodes never nests on the stack (a 50,000-node chain is
+  tested natively, 20,000 in debug wasm; nesting overflowed a debug build before 1,000).
+- Who runs the queue: awaiting a `Shared` from inside queued work only queues it. Awaiting it
+  from anywhere else (an executor, `now_or_never`, a blocking call inside a node) runs the queue
+  until nothing is left, then looks again; if the work still waits on something outside, the
+  poller is parked and woken as soon as anything on the queue wakes, from any thread. The
+  engines' `fetch` and `fetch_inputs` are wrapped in `future::settle`, which also runs the queue
+  dry after the result is ready, as JS runs every microtask before returning to the event loop.
+  Together these give upstream's order of work and of errors: concurrent fetches interleave, the
+  error that arrives first wins, and failed siblings still run (the oracle checks each case).
+- A `Shared` whose work panics poisons: every later await panics too, and everyone waiting is
+  woken to see it. Work left queued by a panic runs the next time the queue does.
+- Like JS microtasks, a task that wakes itself on every poll starves the rest: the queue never
+  runs dry, and the poll that is running it never returns. Yield to the host's executor with a
+  future that waits on the host (a timer, a JS promise), not a self-wake.
 - `Promise.all` is `join_all` / `try_join_all`, polling their futures in input order.
-- A driver dropped before it finishes (or unwound by a panic in a node) hands back the work it
-  had queued: whoever awaits that work next runs it.
 - Control flow is synchronous upstream and stays recursive here, one call per forward, because
   the order (forward runs the successor before the forwarding node continues) is its contract.
   A very long control chain can exhaust the stack where JS would throw `RangeError`.

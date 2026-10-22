@@ -35,6 +35,30 @@ async function chain(up, fails = {}) {
   return g
 }
 
+const drain = () => new Promise(r => setTimeout(r, 0))
+function deferred() { let open; const p = new Promise(r => { open = r }); p.open = () => open(); return p }
+// An async node: logs id< when called, waits (yields microtasks, then a gate), logs id>.
+function anode(g, id, inputs, b = {}) {
+  const n = g.mk(id, inputs)
+  n.data = async () => {
+    g.log.push(id + '<')
+    for (let i = 0; i < (b.yields || 0); i++) await Promise.resolve()
+    if (b.gate) await b.gate
+    g.log.push(id + '>')
+    if (b.fail) throw new Error('fail ' + id)
+    return { o: id }
+  }
+  return n
+}
+async function build(up, nodes, links, attachFirst = true) {
+  const g = graph(up)
+  if (attachFirst) g.attach()
+  const byId = {}
+  for (const n of nodes(g)) { byId[n.id] = n; await g.editor.addNode(n) }
+  for (const [a, b, i] of links) await g.link(byId[a], byId[b], i)
+  return g
+}
+
 const message = async promise => {
   try { await promise; return 'ok' } catch (e) { return e.message }
 }
@@ -206,5 +230,107 @@ module.exports = {
     }
     flow.execute('a')
     return { log }
+  },
+  async async_mixed(up) {
+    const g = await build(up, g => [anode(g, 'A', [], { yields: 1 }), g.mk('B', ['i']),
+      anode(g, 'C', [], { yields: 2 }), g.mk('D', ['b', 'c'])],
+      [['A', 'B', 'i'], ['B', 'D', 'b'], ['C', 'D', 'c']])
+    const out = await g.dataflow.fetch('D')
+    return { log: g.log, out }
+  },
+  async concurrent_chains(up) {
+    const g = await build(up, g => [anode(g, 'X1', [], { yields: 1 }), anode(g, 'X2', ['i'], { yields: 1 }),
+      anode(g, 'Y1', [], { yields: 1 }), anode(g, 'Y2', ['i'], { yields: 1 })],
+      [['X1', 'X2', 'i'], ['Y1', 'Y2', 'i']])
+    await Promise.all([g.dataflow.fetch('X2'), g.dataflow.fetch('Y2')])
+    return { log: g.log }
+  },
+  async concurrent_sync_nodes(up) {
+    const g = await chain(up)
+    await Promise.all([g.dataflow.fetch('B'), g.dataflow.fetch('C')])
+    return { log: g.log }
+  },
+  async same_node_twice(up) {
+    const g = await chain(up)
+    const [a, b] = await Promise.all([g.dataflow.fetch('D'), g.dataflow.fetch('D')])
+    return { log: g.log, same: a.o === b.o }
+  },
+  async reset_inside_data(up) {
+    const g = await chain(up)
+    const B = g.editor.getNode('B')
+    let first = true
+    B.data = () => { g.log.push('B'); if (first) { first = false; g.dataflow.reset('A') } return { o: 'B' } }
+    const error = await message(g.dataflow.fetch('D'))
+    const log1 = [...g.log]
+    g.log.length = 0
+    await g.dataflow.fetch('D')
+    return { error, log1, log2: g.log }
+  },
+  async reset_all_inside_data(up) {
+    const g = await chain(up)
+    const D = g.editor.getNode('D')
+    let first = true
+    D.data = () => { g.log.push('D'); if (first) { first = false; g.dataflow.reset() } return { o: 'D' } }
+    const error = await message(g.dataflow.fetch('D'))
+    g.log.length = 0
+    await g.dataflow.fetch('D')
+    return { error, log2: g.log }
+  },
+  async deep_error(up) {
+    const g = await build(up, g => [anode(g, 'N1', [], { yields: 1 }), g.mk('N2', ['i']), g.mk('N3', ['i'], true),
+      g.mk('N4', ['i']), g.mk('N5', ['i'])],
+      [['N1', 'N2', 'i'], ['N2', 'N3', 'i'], ['N3', 'N4', 'i'], ['N4', 'N5', 'i']])
+    return { error: await message(g.dataflow.fetch('N5')), log: g.log }
+  },
+  async fetch_inputs_missing_setup(up) {
+    const g = graph(up)
+    const A = g.mk('A', []), B = g.mk('B', ['i']), C = g.mk('C', []), D = g.mk('D', ['b', 'c'])
+    await g.editor.addNode(B)
+    g.attach()
+    for (const n of [A, C, D]) await g.editor.addNode(n)
+    await g.link(A, B, 'i')
+    await g.link(B, D, 'b')
+    await g.link(C, D, 'c')
+    const error = await message(g.dataflow.fetchInputs('D'))
+    await drain()
+    return { error, log: g.log }
+  },
+  async error_beside_waiting(up) {
+    const gate = deferred()
+    const g = await build(up, g => [anode(g, 'B', [], { gate }), g.mk('C', [], true), g.mk('D', ['b', 'c'])],
+      [['B', 'D', 'b'], ['C', 'D', 'c']])
+    const error = await message(g.dataflow.fetch('D'))
+    const log1 = [...g.log]
+    gate.open()
+    const out = await g.dataflow.fetch('B')
+    return { error, log1, log2: g.log, out }
+  },
+  async reset_while_waiting(up) {
+    const gate = deferred()
+    const g = await build(up, g => [anode(g, 'A', [], { gate }), g.mk('B', ['i']), g.mk('C', []), g.mk('D', ['b', 'c'])],
+      [['A', 'B', 'i'], ['B', 'D', 'b'], ['C', 'D', 'c']])
+    const p = g.dataflow.fetch('D')
+    await drain()
+    g.dataflow.reset('B')
+    gate.open()
+    const error = await message(p)
+    const log1 = [...g.log]
+    g.log.length = 0
+    await g.dataflow.fetch('D')
+    return { error, log1, log2: g.log }
+  },
+  async fetch_inside_data(up) {
+    const g = await build(up, g => {
+      const E = g.mk('E', [])
+      E.data = async () => {
+        g.log.push('E<')
+        const a = await g.dataflow.fetch('A')
+        g.log.push('E>')
+        return { o: 'E' + a.o }
+      }
+      return [anode(g, 'A', [], { yields: 1 }), E, g.mk('C', []), g.mk('D', ['e', 'c'])]
+    }, [['E', 'D', 'e'], ['C', 'D', 'c']])
+    const out = await g.dataflow.fetchInputs('D')
+    return { log: g.log, out }
   }
 }

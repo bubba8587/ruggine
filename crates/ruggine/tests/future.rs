@@ -114,8 +114,7 @@ fn a_shared_future_that_panicked_panics_for_every_awaiter() {
 }
 
 #[test]
-fn scheduled_runs_a_long_chain_of_shared_futures_on_a_flat_stack() {
-    use ruggine::future::scheduled;
+fn a_long_chain_of_shared_futures_runs_on_a_flat_stack() {
     type Link = Shared<LocalBoxFuture<'static, u64>>;
     let mut prev: Option<Link> = None;
     for _ in 0..200_000 {
@@ -128,12 +127,11 @@ fn scheduled_runs_a_long_chain_of_shared_futures_on_a_flat_stack() {
         }) as LocalBoxFuture<'static, u64>));
     }
     let last = prev.unwrap();
-    assert_eq!(now_or_never(scheduled(last)), Some(199_999));
+    assert_eq!(now_or_never(last), Some(199_999));
 }
 
 #[test]
-fn work_left_by_a_dropped_driver_is_picked_up_by_the_next() {
-    use ruggine::future::scheduled;
+fn work_a_dropped_poller_started_is_finished_by_the_next() {
     let gate = Gate::new(5);
     let opener = gate.clone();
     let base = Shared::new(Box::pin(gate) as LocalBoxFuture<'static, i32>);
@@ -141,18 +139,17 @@ fn work_left_by_a_dropped_driver_is_picked_up_by_the_next() {
     let first = Shared::new(Box::pin(async move { b1.await + 1 }) as LocalBoxFuture<'static, i32>);
     let second = Shared::new(Box::pin(async move { b2.await + 2 }) as LocalBoxFuture<'static, i32>);
 
-    let mut driver = scheduled(first);
-    assert!(poll(&mut driver).is_pending());
-    drop(driver);
+    let mut poller = first;
+    assert!(poll(&mut poller).is_pending());
+    drop(poller);
 
     opener.open();
-    assert_eq!(now_or_never(scheduled(second.clone())), Some(7));
+    assert_eq!(now_or_never(second.clone()), Some(7));
     assert_eq!(now_or_never(base), Some(5));
 }
 
 #[test]
 fn work_queued_beside_a_panic_still_runs_later() {
-    use ruggine::future::scheduled;
     use std::panic::{AssertUnwindSafe, catch_unwind};
     let boom = Shared::new(Box::pin(async {
         if true {
@@ -163,7 +160,65 @@ fn work_queued_beside_a_panic_still_runs_later() {
     let queued = Shared::new(Box::pin(async { 3 }) as LocalBoxFuture<'static, i32>);
     let both = join_all(vec![boom, queued.clone()]);
     // `boom` runs first and panics while `queued` waits in the same driver's queue.
-    let crashed = catch_unwind(AssertUnwindSafe(|| now_or_never(scheduled(both))));
+    let crashed = catch_unwind(AssertUnwindSafe(|| now_or_never(both)));
     assert!(crashed.is_err());
-    assert_eq!(now_or_never(scheduled(queued)), Some(3));
+    assert_eq!(now_or_never(queued), Some(3));
+}
+
+#[test]
+fn a_spawned_shared_future_runs_without_being_awaited() {
+    let ran = Rc::new(Cell::new(false));
+    let flag = ran.clone();
+    let _spawned = Shared::spawn(Box::pin(async move {
+        flag.set(true);
+    }) as LocalBoxFuture<'static, ()>);
+    assert!(!ran.get());
+    let other = Shared::new(Box::pin(async { 1 }) as LocalBoxFuture<'static, i32>);
+    assert_eq!(now_or_never(other), Some(1));
+    assert!(ran.get(), "the queue runs dry whenever it runs");
+}
+
+#[test]
+fn a_blocking_await_inside_queued_work_finishes() {
+    let inner = Shared::spawn(Box::pin(async { 2 }) as LocalBoxFuture<'static, i32>);
+    let outer = Shared::new(Box::pin(async move { now_or_never(inner).map(|v| v + 1) })
+        as LocalBoxFuture<'static, Option<i32>>);
+    assert_eq!(now_or_never(outer), Some(Some(3)));
+}
+
+#[test]
+fn a_poll_from_outside_the_queue_is_woken_when_shared_work_is_poisoned() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::task::Wake;
+    struct Count(AtomicUsize);
+    impl Wake for Count {
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    let gate = Gate::new(0);
+    let opener = gate.clone();
+    let boom = Shared::new(Box::pin(async move {
+        if gate.await == 0 {
+            panic!("boom");
+        }
+        0
+    }) as LocalBoxFuture<'static, i32>);
+    let count = Arc::new(Count(AtomicUsize::new(0)));
+    let waker = Waker::from(count.clone());
+    let mut waiting = boom.clone();
+    assert!(
+        Pin::new(&mut waiting)
+            .poll(&mut Context::from_waker(&waker))
+            .is_pending()
+    );
+    opener.open();
+    let crashed = catch_unwind(AssertUnwindSafe(|| now_or_never(boom.clone())));
+    assert!(crashed.is_err());
+    assert!(
+        count.0.load(Ordering::SeqCst) > 0,
+        "the other waiter hears about it"
+    );
 }

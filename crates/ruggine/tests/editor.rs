@@ -299,3 +299,30 @@ fn connections_by_node_follow_adds_and_removals() {
     assert!(editor.get_connections_to("c").is_empty());
     assert!(editor.get_connections_from("a").is_empty());
 }
+
+#[test]
+fn order_and_lookups_survive_many_removals() {
+    let editor = Editor::new();
+    let ids: Vec<String> = (0..300).map(|i| i.to_string()).collect();
+    for id in &ids {
+        run(editor.add_node(node(id))).unwrap();
+    }
+    for (i, id) in ids.iter().enumerate() {
+        if i % 3 != 0 {
+            run(editor.remove_node(id)).unwrap();
+        }
+    }
+    let kept: Vec<String> = ids.iter().step_by(3).cloned().collect();
+    let order: Vec<String> = editor
+        .get_nodes()
+        .iter()
+        .map(|n| n.id().to_owned())
+        .collect();
+    assert_eq!(order, kept);
+    for id in &kept {
+        assert_eq!(editor.get_node(id).unwrap().id(), id);
+    }
+    run(editor.add_node(node("new"))).unwrap();
+    assert_eq!(editor.get_nodes().last().unwrap().id(), "new");
+    assert!(editor.get_node("1").is_none());
+}

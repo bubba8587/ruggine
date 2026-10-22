@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/ruggine", "crates/ruggine-engine"]
+members = ["crates/ruggine", "crates/ruggine-engine", "bench"]
 
 [workspace.package]
 version = "0.1.0"

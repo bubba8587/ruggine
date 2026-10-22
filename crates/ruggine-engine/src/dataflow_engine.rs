@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::rc::{Rc, Weak};
 
 use ruggine::classic::{ClassicConnection, ClassicNode};
-use ruggine::future::{LocalBoxFuture, scheduled};
+use ruggine::future::{LocalBoxFuture, settle};
 use ruggine::{
     ConnectionBase, NodeBase, NodeEditor, ParentRef, Plugin, Root, Schemes, Scope, WeakNodeEditor,
 };
@@ -212,7 +212,7 @@ where
     /// The node's inputs, fetching every predecessor.
     pub fn fetch_inputs(&self, node_id: &str) -> LocalBoxFuture<'static, Result<Inputs<V>, Error>> {
         match self.dataflow() {
-            Ok(dataflow) => Box::pin(scheduled(dataflow.fetch_inputs(node_id))),
+            Ok(dataflow) => Box::pin(settle(dataflow.fetch_inputs(node_id))),
             Err(e) => Box::pin(std::future::ready(Err(e))),
         }
     }
@@ -220,7 +220,7 @@ where
     /// The node's outputs, from the cache when present.
     pub fn fetch(&self, node_id: &str) -> DataFuture<V> {
         match self.dataflow() {
-            Ok(dataflow) => Box::pin(scheduled(dataflow.fetch(node_id))),
+            Ok(dataflow) => Box::pin(settle(dataflow.fetch(node_id))),
             Err(e) => Box::pin(std::future::ready(Err(e))),
         }
     }
