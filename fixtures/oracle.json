@@ -1,0 +1,170 @@
+{
+  "fetch_order": {
+    "log": [
+      "C",
+      "A",
+      "B",
+      "D"
+    ],
+    "out": {
+      "o": "D"
+    }
+  },
+  "fetch_inputs": {
+    "log": [
+      "C",
+      "A",
+      "B"
+    ],
+    "inputs": {
+      "b": [
+        "B"
+      ],
+      "c": [
+        "C"
+      ]
+    }
+  },
+  "cached": {
+    "log": [
+      "C",
+      "A",
+      "B",
+      "D"
+    ]
+  },
+  "reset_before_await": {
+    "error": "cancelled"
+  },
+  "two_failures": {
+    "error": "fail C",
+    "log": [
+      "C",
+      "A"
+    ]
+  },
+  "reset_empty": {
+    "log": [
+      "C",
+      "A",
+      "B",
+      "D"
+    ]
+  },
+  "reset_middle": {
+    "log": [
+      "B",
+      "D"
+    ]
+  },
+  "diamond": {
+    "log": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ]
+  },
+  "fan_in": {
+    "log": [
+      "B",
+      "A",
+      "C"
+    ],
+    "inputs": {
+      "i": [
+        "B",
+        "A",
+        "C"
+      ]
+    }
+  },
+  "missing_outputs": {
+    "error": "dataflow node \"X\" doesn't return all of required properties. Expected \"o\". Got \"other\""
+  },
+  "reset_stops_at_missing_setup": {
+    "error": "setup",
+    "log": [
+      "A"
+    ]
+  },
+  "editor_events": {
+    "log": [
+      "nodecreate",
+      "nodecreated",
+      "nodecreate",
+      "nodecreated",
+      "connectioncreate",
+      "connectioncreated",
+      "connectionremove",
+      "connectionremoved",
+      "connectioncreate",
+      "connectioncreated",
+      "clear",
+      "connectionremove",
+      "connectionremoved",
+      "noderemove",
+      "noderemoved",
+      "noderemove",
+      "noderemoved",
+      "cleared"
+    ]
+  },
+  "cancelled_clear": {
+    "result": false,
+    "log": [
+      "nodecreate",
+      "nodecreated",
+      "clear",
+      "clearcancelled"
+    ],
+    "nodes": [
+      "1"
+    ]
+  },
+  "concurrent_removes": {
+    "log": [
+      "noderemove:1",
+      "noderemove:2",
+      "noderemove:3",
+      "noderemoved:1",
+      "noderemoved:2",
+      "noderemoved:3"
+    ],
+    "nodes": [
+      "4",
+      "5",
+      "6"
+    ]
+  },
+  "key_order": {
+    "first": [
+      "1",
+      "2",
+      "10",
+      "b",
+      "a",
+      "01"
+    ],
+    "after": [
+      "1",
+      "2",
+      "10",
+      "a",
+      "01",
+      "b"
+    ]
+  },
+  "control_order": {
+    "log": [
+      "a:null",
+      "b:in",
+      "d:in",
+      "d:end",
+      "b:end",
+      "c:in",
+      "c:end",
+      "a:end"
+    ]
+  }
+}

@@ -19,3 +19,34 @@ jobs:
       - run: cargo test --workspace
       - run: cargo build --workspace --target wasm32-unknown-unknown
       - run: python3 tools/dte.py validate --as B
+
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen@0.2.129
+      - name: tests in a wasm runtime (Node)
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
+        run: |
+          cargo test --target wasm32-unknown-unknown -p ruggine --test wasm
+          cargo test --target wasm32-unknown-unknown -p ruggine-engine --test wasm
+
+  oracle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install -g typescript@5
+      - name: upstream's answers match fixtures/oracle.json
+        run: |
+          node tools/oracle/run.mjs
+          git diff --exit-code fixtures/oracle.json

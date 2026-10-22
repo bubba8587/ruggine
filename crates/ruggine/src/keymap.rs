@@ -1,4 +1,4 @@
-// [[B6]] jsKeyOrder
+// [[B1]] upstreamIsSpec
 //! The stand-in for upstream's name-keyed plain objects: iterates in JavaScript's property
 //! order (canonical array-index keys ascending, then insertion order).
 

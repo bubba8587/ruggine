@@ -3,15 +3,18 @@
 Open problems and the latest session digests. Older digests move to
 `docs/archive/dev-notes-history.md` (created when the first one moves).
 
-## 2026-10-22 — scaffold and full port
+## 2026-10-22: scaffold and full port
 
-- Scaffold: Cargo workspace, CI (fmt, clippy, tests, wasm build, `dte validate`), upstream rete
-  2.0.6 / rete-engine 2.1.1 pinned in `upstream/`, the DTE tree copied from Solenoid.
-- Ported all of both packages: editor, scopes and pipes, classic preset with controls, dataflow
-  and control-flow engines, cache, cancellable. Every upstream test has a Rust counterpart, plus
-  extra tests for behavior upstream's source states but its suite doesn't check.
-- Design leaves: [[B4]] asyncNoRuntime, [[B5]] sharedHandles, [[B6]] jsKeyOrder, [[B7]]
-  idsByLookup, [[B8]] resetVisitsOnce, [[B9]] randomIds; mechanics and every divergence in
-  `tree/specs/port.md`. All unratified.
-- Open: stack depth on very long chains (`tree/specs/port.md` § Futures); the wasm uid check
-  (`docs/backlog.md`).
+- Ported all of rete 2.0.6 and rete-engine 2.1.1, with every upstream test translated. The tree
+  holds only product calls ([[A1]] rustRete, [[A3]] portEverything, [[B1]] upstreamIsSpec,
+  [[B2]] browserAndDesktop, [[B3]] preAlphaBreakFreely, all unratified); the mechanics and every
+  divergence are in `tree/specs/port.md`.
+- Upstream is checked directly: `tools/oracle/` runs scenarios on the pinned upstream and
+  `ruggine-engine/tests/oracle.rs` must give the same answers (16 scenarios: work order,
+  concurrency, cancellation, reset, errors, editor events, key order, control flow).
+- The engines' fetches run on a small queue scheduler (`future::scheduled`): flat stack (50,000
+  nodes native, 20,000 in debug wasm with real JS promises) and upstream's order of work.
+- Wasm is tested in a real runtime (wasm-bindgen-test under Node), including getrandom's
+  browser backend.
+- Open: control flow stays recursive by contract (`port.md` § Futures); a fetched cycle never
+  finishes and isn't freed, as upstream's never finishes.

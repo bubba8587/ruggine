@@ -1,4 +1,4 @@
-// [[B5]] sharedHandles: a scheme whose node type is a trait object, the shape Solenoid needs
+// [[A3]] portEverything: a scheme whose node type is a trait object, the shape Solenoid needs
 // for its many node kinds.
 mod common;
 

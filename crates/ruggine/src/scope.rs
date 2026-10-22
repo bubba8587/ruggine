@@ -1,4 +1,4 @@
-// [[B4]] asyncNoRuntime, [[B5]] sharedHandles
+// [[B1]] upstreamIsSpec
 //! Upstream's `Signal` and `Scope`: a chain of pipes, and scopes that forward their signals to
 //! the child scopes they `use`. Mapping notes: `tree/specs/port.md` § Scopes.
 

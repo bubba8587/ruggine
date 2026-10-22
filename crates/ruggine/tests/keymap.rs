@@ -1,4 +1,4 @@
-// [[B6]] jsKeyOrder
+// [[B1]] upstreamIsSpec
 use ruggine::keymap::is_array_index;
 use ruggine::{KeyMap, keymap};
 

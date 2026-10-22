@@ -191,7 +191,7 @@ fn input_control_holds_a_value_and_reports_changes() {
         change: Some(Box::new(move |v| log.borrow_mut().push(v.copied()))),
         ..Default::default()
     });
-    assert_eq!(*control.value(), Some(1.0));
+    assert_eq!(control.value(), Some(1.0));
     assert!(!control.readonly());
     control.set_value(Some(2.5));
     control.set_value(None);
@@ -216,4 +216,23 @@ fn a_typed_control_comes_back_out_of_a_node() {
     assert!(back.readonly());
     assert!(node.control::<InputControl<f64>>("t").is_none());
     assert!(node.control::<Control>("t").is_none());
+}
+
+#[test]
+fn a_change_callback_may_set_the_value_again() {
+    let slot: Rc<std::cell::RefCell<Option<Rc<InputControl<f64>>>>> = Rc::default();
+    let handle = slot.clone();
+    let control = Rc::new(InputControl::number(InputControlOptions {
+        change: Some(Box::new(move |v| {
+            if v.is_some_and(|v| *v > 10.0) {
+                let control = handle.borrow().clone().unwrap();
+                control.set_value(Some(10.0));
+            }
+        })),
+        ..Default::default()
+    }));
+    *slot.borrow_mut() = Some(control.clone());
+    control.set_value(Some(42.0));
+    assert_eq!(control.value(), Some(10.0));
+    slot.borrow_mut().take();
 }

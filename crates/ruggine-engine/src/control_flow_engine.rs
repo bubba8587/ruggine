@@ -1,4 +1,4 @@
-// [[B5]] sharedHandles
+// [[B1]] upstreamIsSpec
 //! Upstream's `ControlFlowEngine`: a plugin that registers every node the editor adds with a
 //! [`ControlFlow`].
 
@@ -95,7 +95,7 @@ where
             .control_flow
             .borrow()
             .clone()
-            .ok_or(Error::NotAttached)
+            .ok_or(Error::NotAttached("ControlFlowEngine"))
     }
 
     fn add(&self, node: Rc<S::Node>) {

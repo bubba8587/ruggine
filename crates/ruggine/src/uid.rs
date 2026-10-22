@@ -1,4 +1,4 @@
-// [[B9]] randomIds
+// [[B1]] upstreamIsSpec, [[B2]] browserAndDesktop
 //! Upstream's `getUID`.
 
 use std::cell::RefCell;

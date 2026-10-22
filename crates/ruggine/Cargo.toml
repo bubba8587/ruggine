@@ -15,3 +15,6 @@ getrandom = { version = "0.3.4", features = ["wasm_js"] }
 
 [lints]
 workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"

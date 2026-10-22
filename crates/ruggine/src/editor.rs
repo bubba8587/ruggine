@@ -1,4 +1,4 @@
-// [[B5]] sharedHandles, [[B7]] idsByLookup
+// [[B1]] upstreamIsSpec
 //! Upstream's `NodeEditor` and its `Root` signals. Mapping notes: `tree/specs/port.md` § Editor.
 
 use std::any::Any;
@@ -112,10 +112,42 @@ impl<T: ?Sized> Store<T> {
     }
 }
 
+/// Connection ids by the node they leave and the node they enter, each in connection order.
+#[derive(Default)]
+struct Links {
+    from: HashMap<String, Vec<String>>,
+    to: HashMap<String, Vec<String>>,
+}
+
+impl Links {
+    fn add(&mut self, id: &str, source: &str, target: &str) {
+        self.from
+            .entry(source.to_owned())
+            .or_default()
+            .push(id.to_owned());
+        self.to
+            .entry(target.to_owned())
+            .or_default()
+            .push(id.to_owned());
+    }
+
+    fn remove(&mut self, id: &str, source: &str, target: &str) {
+        for (map, node) in [(&mut self.from, source), (&mut self.to, target)] {
+            if let Some(ids) = map.get_mut(node) {
+                ids.retain(|i| i != id);
+                if ids.is_empty() {
+                    map.remove(node);
+                }
+            }
+        }
+    }
+}
+
 pub struct EditorInner<S: Schemes> {
     scope: Scope<Root<S>>,
     nodes: RefCell<Store<S::Node>>,
     connections: RefCell<Store<S::Connection>>,
+    links: RefCell<Links>,
 }
 
 /// Upstream's `NodeEditor`, as a cheap-clone handle.
@@ -144,6 +176,7 @@ impl<S: Schemes> NodeEditor<S> {
                 scope: Scope::new("NodeEditor"),
                 nodes: RefCell::new(Store::new()),
                 connections: RefCell::new(Store::new()),
+                links: RefCell::new(Links::default()),
             }),
         }
     }
@@ -190,6 +223,30 @@ impl<S: Schemes> NodeEditor<S> {
         self.inner.connections.borrow().items.clone()
     }
 
+    /// The connections entering `node_id`, in the order connections were added: the same as
+    /// filtering [`NodeEditor::get_connections`] on target, without the scan.
+    pub fn get_connections_to(&self, node_id: &str) -> Vec<Rc<S::Connection>> {
+        self.linked(node_id, |links| &links.to)
+    }
+
+    /// The connections leaving `node_id`, in the order connections were added.
+    pub fn get_connections_from(&self, node_id: &str) -> Vec<Rc<S::Connection>> {
+        self.linked(node_id, |links| &links.from)
+    }
+
+    fn linked(
+        &self,
+        node_id: &str,
+        side: impl Fn(&Links) -> &HashMap<String, Vec<String>>,
+    ) -> Vec<Rc<S::Connection>> {
+        let links = self.inner.links.borrow();
+        let store = self.inner.connections.borrow();
+        side(&links)
+            .get(node_id)
+            .map(|ids| ids.iter().filter_map(|id| store.get(id)).collect())
+            .unwrap_or_default()
+    }
+
     /// `Ok(false)` when a `nodecreate` pipe cancels it.
     pub async fn add_node(&self, data: Rc<S::Node>) -> Result<bool, Error> {
         let id = data.id().to_owned();
@@ -223,7 +280,14 @@ impl<S: Schemes> NodeEditor<S> {
         if self.get_connection(&id).is_some() {
             return Err(Error::ConnectionAlreadyAdded);
         }
-        self.inner.connections.borrow_mut().push(id, data.clone());
+        self.inner
+            .connections
+            .borrow_mut()
+            .push(id.clone(), data.clone());
+        self.inner
+            .links
+            .borrow_mut()
+            .add(&id, data.source(), data.target());
         self.emit(Root::ConnectionCreated(data)).await;
         Ok(true)
     }
@@ -249,7 +313,12 @@ impl<S: Schemes> NodeEditor<S> {
         {
             return Ok(false);
         }
-        self.inner.connections.borrow_mut().remove(id, &connection);
+        if self.inner.connections.borrow_mut().remove(id, &connection) {
+            self.inner
+                .links
+                .borrow_mut()
+                .remove(id, connection.source(), connection.target());
+        }
         self.emit(Root::ConnectionRemoved(connection)).await;
         Ok(true)
     }

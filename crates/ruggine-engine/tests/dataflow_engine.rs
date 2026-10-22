@@ -1,4 +1,4 @@
-// [[B1]] upstreamIsSpec: rete-engine/test/dataflow-engine.test.ts, [[B8]] resetVisitsOnce
+// [[B1]] upstreamIsSpec: rete-engine/test/dataflow-engine.test.ts
 mod common;
 
 use std::cell::{Cell, RefCell};
@@ -246,7 +246,10 @@ fn reset_during_a_fetch_cancels_it() {
 #[test]
 fn an_engine_not_attached_says_so() {
     let engine = DataflowEngine::<Schemes, String>::new();
-    assert_eq!(run(engine.fetch("x")).unwrap_err(), Error::NotAttached);
+    assert_eq!(
+        run(engine.fetch("x")).unwrap_err(),
+        Error::NotAttached("DataflowEngine")
+    );
 }
 
 #[test]
@@ -260,5 +263,52 @@ fn editor_and_engine_dont_keep_each_other_alive() {
     assert_eq!(
         run(engine.fetch(&node.id())).unwrap_err(),
         Error::EditorDropped
+    );
+}
+
+#[test]
+fn reset_during_a_nodes_own_data_cancels_its_fetch() {
+    let (editor, engine) = setup();
+    let node = TestNode::new("label", "data");
+    run(editor.add_node(node.clone())).unwrap();
+    let gate = Controlled::new();
+    *node.gate.borrow_mut() = Some(gate.clone());
+
+    let mut fetch = engine.fetch(&node.id());
+    assert!(poll(&mut fetch).is_pending());
+    assert_eq!(node.calls.get(), 1);
+    engine.reset(Some(&node.id())).unwrap();
+    gate.resolve(());
+    assert_eq!(poll(&mut fetch), Poll::Ready(Err(Error::Cancelled)));
+}
+
+#[test]
+fn a_long_chain_fetches_without_deep_recursion() {
+    let (editor, engine) = setup();
+    let mut prev: Option<Rc<TestNode>> = None;
+    for i in 0..50_000 {
+        let node = TestNode::new("n", &i.to_string());
+        run(editor.add_node(node.clone())).unwrap();
+        if let Some(p) = &prev {
+            connect(&editor, p, &node);
+        }
+        prev = Some(node);
+    }
+    let last = prev.unwrap();
+    let out = run(engine.fetch(&last.id())).unwrap();
+    assert_eq!(out["output"], "49999");
+    assert_eq!(
+        *last.seen.borrow()[0].get("input").unwrap(),
+        vec!["49998".to_owned()]
+    );
+}
+
+#[test]
+fn a_detached_engine_names_itself() {
+    let engine = DataflowEngine::<Schemes, String>::new();
+    let err = run(engine.fetch("x")).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "DataflowEngine isn't attached to NodeEditor"
     );
 }

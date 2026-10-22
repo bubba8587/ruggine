@@ -1,3 +1,9 @@
 # Retired decision ids. Never reissued. Text lives in git history.  dte:C11
 # id	date	action	successor	by	authorized_by	title
 A2	2026-10-22	superseded	A3	claude-opus-5-5	the author	solenoidFirst: Ruggine serves Solenoid: the parts of rete Solenoid uses come first, the rest only when needed
+B4	2026-10-22	reverted	-	claude-opus-5-5	-	asyncNoRuntime: Editor events, pipes, node data and fetches are async like upstream, tied to no runtime
+B5	2026-10-22	reverted	-	claude-opus-5-5	-	sharedHandles: Editors, scopes and engines are cheap-clone handles; nodes live in Rc and change in place
+B6	2026-10-22	reverted	-	claude-opus-5-5	-	jsKeyOrder: Port, control and data maps keep JavaScript's key order: integer keys ascending, then insertion
+B7	2026-10-22	reverted	-	claude-opus-5-5	-	idsByLookup: Nodes and connections are found by a hash lookup on id, keeping upstream's list order
+B8	2026-10-22	reverted	-	claude-opus-5-5	-	resetVisitsOnce: Engine reset walks successors without recursion and visits each node once
+B9	2026-10-22	reverted	-	claude-opus-5-5	-	randomIds: Ids are 16 random hex characters like upstream's getUID, from an overridable random source

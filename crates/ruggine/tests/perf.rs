@@ -1,4 +1,4 @@
-// [[B1]] upstreamIsSpec: rete/test/index.perf.ts, [[B7]] idsByLookup
+// [[B1]] upstreamIsSpec: rete/test/index.perf.ts
 use std::rc::Rc;
 
 use ruggine::future::{join_all, now_or_never};

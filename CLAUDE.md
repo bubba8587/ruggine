@@ -12,7 +12,7 @@ and signal pipes, the classic preset) and `crates/ruggine-engine` ports `rete-en
 `DataflowEngine` and control-flow engine ([[A1]] rustRete). All of upstream is ported
 ([[A3]] portEverything). The pinned upstream source in `upstream/` is the
 spec, and its tests are ported before the code they cover ([[B1]] upstreamIsSpec). Everything
-builds for wasm32 and native ([[B2]] wasmClean).
+builds for wasm32 and native ([[B2]] browserAndDesktop).
 
 ## Branch model
 Same as Solenoid's: `main` is the release line, `develop` is the one development branch. A
@@ -27,7 +27,13 @@ cargo test --workspace
 cargo build --workspace --target wasm32-unknown-unknown
 python3 tools/dte.py validate --as B
 ```
-CI (`.github/workflows/ci.yml`) runs the same list.
+CI (`.github/workflows/ci.yml`) runs the same list, plus two jobs:
+- **wasm**: `cargo test --target wasm32-unknown-unknown -p ruggine --test wasm` (and the same for
+  `-p ruggine-engine`) with `CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner`.
+  The runner must be the `wasm-bindgen` version in `Cargo.lock` (`cargo install
+  wasm-bindgen-cli --version <it> --locked`); bump CI's pin with the lock.
+- **oracle**: `node tools/oracle/run.mjs` re-records upstream's answers and fails if
+  `fixtures/oracle.json` changed. Run it after adding or editing a scenario.
 
 ## Docs map — read before touching code
 - **`tree/specs/port.md` — read IN FULL before touching code.** Where every upstream module and
@@ -53,10 +59,12 @@ the code, update `tree/specs/port.md` when a mapping or divergence changed. Writ
 narratives.
 
 ### Reflexes
+- A question of order, concurrency or edge-case behavior is settled by asking upstream: add a
+  scenario to `tools/oracle/scenarios.cjs` and its twin to `ruggine-engine/tests/oracle.rs`.
 - Port by translating upstream's tests first, then the code. A behavior Rust can't match is
   written into `tree/specs/port.md` (a mechanic) or the tree (a choice), never only a comment.
-- Futures are `!Send` and runtime-free ([[B4]] asyncNoRuntime): never add an executor or a
-  `Send` bound. Tests drive them with `future::now_or_never` or a manual poll.
+- Futures are `!Send` and runtime-free (`tree/specs/port.md` § Futures): never add an executor
+  or a `Send` bound. Tests drive them with `future::now_or_never` or a manual poll.
 - Comments are the last-resort home (Solenoid's `tree/specs/floors/engineering.md` §
   Comments). The upstream file a Rust module ports is named once in its `//!` doc.
 - No `unsafe` (the workspace forbids it), no dependency that breaks the wasm build.

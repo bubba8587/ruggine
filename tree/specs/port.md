@@ -2,13 +2,28 @@
 aliases: ["Port mapping"]
 tags: [spec, port]
 ---
-<!-- [[B1]] upstreamIsSpec, [[B4]] asyncNoRuntime, [[B5]] sharedHandles, [[B6]] jsKeyOrder, [[B7]] idsByLookup, [[B8]] resetVisitsOnce, [[B9]] randomIds -->
+<!-- [[B1]] upstreamIsSpec, [[B2]] browserAndDesktop -->
 
 # Spec: how upstream maps onto Ruggine
 
-Serves [[B1]] upstreamIsSpec. Upstream is `rete` 2.0.6 and `rete-engine` 2.1.1 in `upstream/`.
-Every upstream module and test has a Rust home; this spec says where, and lists every place the
-Rust behaves differently, each with its reason. A difference not listed here is a bug.
+Serves [[B1]] upstreamIsSpec and [[B2]] browserAndDesktop. Upstream is `rete` 2.0.6 and
+`rete-engine` 2.1.1 in `upstream/`. Every upstream module and test has a Rust home; this spec
+says where, and lists every place the Rust behaves differently, each with its reason. A
+difference not listed here is a bug.
+
+## Method
+
+- An upstream module is ported by translating its tests first, then writing the code until they
+  pass. Each Rust test file names the upstream test file it translates in its first line.
+- Tests for behavior upstream's source states but its suite doesn't check follow, under a
+  "Beyond upstream's suite" line; every divergence below has one.
+- The oracle: `tools/oracle/scenarios.cjs` runs scenarios against the pinned upstream itself
+  (`node tools/oracle/run.mjs` compiles `upstream/` and records the answers in
+  `fixtures/oracle.json`), and `ruggine-engine/tests/oracle.rs` replays each scenario, by name,
+  against Ruggine. Any behavior where order or concurrency matters gets a scenario there rather
+  than an expectation written by hand.
+- Moving the pin: `upstream/README.md`; then rerun the oracle and diff old and new `src/` and
+  `test/` against this spec.
 
 ## Where everything lives
 
@@ -27,31 +42,50 @@ Rust behaves differently, each with its reason. A difference not listed here is 
 | `rete-engine/src/utils/cache.ts` | `ruggine_engine::cache` | `cache.rs` |
 | `rete-engine/src/utils/cancellable.ts` | `ruggine_engine::cancellable` | `cancellable.rs` |
 | (JS objects keyed by name) | `ruggine::keymap::KeyMap` | `ruggine/tests/keymap.rs` |
-| (promises, `Promise.all`) | `ruggine::future` | `ruggine/tests/future.rs` |
+| (promises, `Promise.all`, the microtask queue) | `ruggine::future` | `ruggine/tests/future.rs` |
+| (upstream's own answers) | `fixtures/oracle.json` | `ruggine-engine/tests/oracle.rs` |
 
 Names are upstream's in snake_case. A JS method that throws returns `Result`, with upstream's
 message as the error's `Display`. `editor.use(x)` is `use_scope` (`use` is a Rust keyword).
 `rete-engine/test/types.test-d.ts` checks TypeScript inference only and has no Rust counterpart:
 values are one type `V` per engine (see Dataflow).
 
-## Futures ([[B4]] asyncNoRuntime)
+## Futures
 
-- Every upstream `async` method returns a future; nothing in Ruggine spawns or blocks.
-  `future::now_or_never` polls once, and a graph with only synchronous pipes and nodes is always
-  done after it.
-- JavaScript promises start work at once; Rust futures start when first polled. Upstream code
-  always awaits right away, so the order of work is the same.
-- `Promise.all` is `join_all` / `try_join_all`, which poll their futures in input order. On an
-  error `try_join_all` drops the rest, where JS lets them run on. Work cached in the engine is
-  not lost: the cache still holds the shared future, and the next fetch resumes it.
+- Async because upstream is: Solenoid has nodes whose data really waits (frames, scripts, live
+  connections, composites) and relies on `reset` cancelling a fetch in flight. Futures are
+  `!Send`, single-threaded like JavaScript. Nothing in Ruggine spawns or blocks, so any host's
+  executor can drive them; `future::now_or_never` polls once, and a graph with only synchronous
+  pipes and nodes is always done after it.
+- Eager where upstream is eager. A JS async function runs synchronously up to its first `await`,
+  so upstream's `fetch` calls the node's setup (creating and caching its run) and
+  `fetchInputs` starts every predecessor's fetch at call time. `Dataflow::fetch` and
+  `Dataflow::fetch_inputs` do that work when called and only the rest waits for a poll; a
+  `reset` between `fetch` and the first poll cancels it, as upstream.
 - A promise held in several places is `future::Shared`. It runs once and hands each awaiter a
-  clone of the output, so cached outputs are `Rc<Outputs<V>>` and errors are `Clone`.
-- Recursion depth: a fetch nests one poll frame per node in the longest chain it walks, and
-  control flow nests one call per forward. Very deep graphs can exhaust the stack where JS would
-  not (fetch) or would throw `RangeError` (control flow).
+  clone of the output, so cached outputs are `Rc<Outputs<V>>` and errors are `Clone`. If its
+  work panics, every later await panics too, rather than waiting forever.
+- The engines' `fetch` and `fetch_inputs` run under `future::scheduled`, a queue standing in for
+  JavaScript's microtask queue. A `Shared` awaited under it is never polled inside its awaiter:
+  it is queued, and the driver runs queued work first in, first out. That keeps the stack flat
+  however long the chain of nodes (a 50,000-node chain is tested; nesting polls overflowed a
+  debug build before 1,000), and it reproduces upstream's order of work: on a graph of a
+  chain beside a single node, upstream and Ruggine both run the single node first.
+- When the fetched result is ready, the driver still runs whatever work is already queued before
+  returning, as JS keeps running promises nobody awaits any more. So when two predecessors fail,
+  both have run, and the error is the one that arrived first, as with `Promise.all`. Work
+  waiting on something outside the graph is not waited for; it resumes when next awaited.
+- `Promise.all` is `join_all` / `try_join_all`, polling their futures in input order.
+- A driver dropped before it finishes (or unwound by a panic in a node) hands back the work it
+  had queued: whoever awaits that work next runs it.
+- Control flow is synchronous upstream and stays recursive here, one call per forward, because
+  the order (forward runs the successor before the forwarding node continues) is its contract.
+  A very long control chain can exhaust the stack where JS would throw `RangeError`.
 
-## Scopes ([[B5]] sharedHandles)
+## Scopes
 
+- Scopes, editors, dataflows and engines are cheap-clone handles over shared state, so a pipe
+  or an engine can hold one, as upstream's plugins hold the editor.
 - `Scope<T>` is generic over its whole signal type `T`, which is upstream's
   `Produces | Parents[number]` written as one Rust type. A child's signal type implements
   `Accepts<ParentSignal>`; `T: Accepts<T>` is built in, so a plugin that only listens uses the
@@ -60,7 +94,8 @@ values are one type `V` per engine (see Dataflow).
   async pipes are added with `add_pipe` / `add_async_pipe` and run in one chain, in order. A pipe
   added during an emit runs in that emit.
 - `use_scope(child)` sets the child's parent, then adds a pipe that holds a clone of the child
-  and runs the child's chain at that point, so the parent keeps the child alive as in JS. If a child pipe turns the parent's signal into one the parent's type can't hold
+  and runs the child's chain at that point, so the parent keeps the child alive as in JS. If a
+  child pipe turns the parent's signal into one the parent's type can't hold
   (`into_parent` fails), the parent's chain stops as if a pipe returned `None`; in JS the foreign
   signal would continue down the parent's chain.
 - Upstream throws "cannot use non-Scope instance"; here `use_scope` only accepts a `Plugin`, so
@@ -68,15 +103,20 @@ values are one type `V` per engine (see Dataflow).
 - A child holds its parent weakly (`ParentRef`). `has_parent` is false once the parent is gone.
   `parent_scope::<P>()` returns the parent as handle type `P`, or upstream's two errors.
 
-## Editor ([[B5]] sharedHandles, [[B7]] idsByLookup)
+## Editor
 
 - `NodeEditor<S>` is a cheap-clone handle. Nodes and connections go in as `Rc` and come out as
   the same `Rc`; `get_nodes` / `get_connections` return a copy of the list, as upstream's
   `slice()`.
 - `Schemes` has a `Node` and a `Connection` type, either of which may be a trait object;
   `BaseSchemes` is `GetSchemes<dyn NodeBase, dyn ConnectionBase>`, upstream's untyped default.
-- Lookup by id is a hash lookup; list order is insertion order, and removal keeps the rest in
-  order. A node's id must not change while it is in the editor.
+- Lookup by id is a hash lookup (upstream scans the list): Solenoid looks nodes up by id inside
+  loops over nodes, which a scan makes quadratic. List order is insertion order, and removal keeps
+  the rest in order, so nothing observable changes. A node's id must not change while it is in
+  the editor.
+- `get_connections_to(node)` / `get_connections_from(node)` answer upstream's
+  `getConnections().filter(c => c.target === node)` (or `source`) from an index, in the same
+  order. The engines use them; upstream's scan per node makes a fetch quadratic in graph size.
 - Root signals are an enum, `Root::NodeCreate(node)` for upstream's
   `{ type: 'nodecreate', data: node }`; `type_name()` gives the string.
 - Two concurrency fixes over upstream, both where upstream corrupts its list: if the same id is
@@ -85,29 +125,33 @@ values are one type `V` per engine (see Dataflow).
   when its remove finishes waiting on `noderemove`, nothing is removed, where upstream's
   `splice(-1, 1)` would drop the last item.
 
-## Classic preset ([[B5]] sharedHandles, [[B6]] jsKeyOrder)
+## Classic preset
 
 - `Node`, `Input`, `Output` keep upstream's mutable fields behind interior mutability, so they
   change through `&self` after the node is in an editor: label, selection, ports, controls,
-  socket, port label, `multiple_connections`, `index`, `show_control`. Ids are plain fields, set
-  before the node is shared.
+  socket, port label, `multiple_connections`, `index`, `show_control`; Solenoid adds, removes and
+  retypes ports on live nodes. Ids are plain fields, set before the node is shared.
 - Holding the `Ref` from `inputs()` / `outputs()` / `controls()` while adding or removing a port
   on the same node panics; take what you need and drop it first.
 - Ports are `Rc<Input<S>>` / `Rc<Output<S>>` in a `KeyMap`, in JavaScript key order (canonical
-  array-index keys ascending, then insertion order). `Input` and `Output` deref to `Port`.
+  array-index keys ascending, then insertion order; a removed and re-added key goes last). The
+  engines' default inputs and outputs come from that order, so it is part of the answer.
+  `Input` and `Output` deref to `Port`.
 - `Input` takes one connection unless set otherwise, `Output` many (upstream: `undefined` versus
   `!== false`). Upstream keeps an unset input flag `undefined`; here it is `false`, which reads
   the same anywhere it is tested for truth.
 - Controls are `Rc<dyn AnyControl>`; `Control` is the base class and a subclass embeds one and
   implements `AnyControl`. `node.control::<C>(key)` returns the control if it is a `C`.
   `add_control` takes the control by value and returns the `Rc` it now holds.
-- `InputControl<N>`: `text` holds a `String`, `number` an `f64`. `change` receives
-  `Option<&N>`, because upstream calls it with `undefined` when the value is cleared.
+- `InputControl<N>`: `text` holds a `String`, `number` an `f64`. `value()` returns a copy.
+  `set_value` stores the value, then calls `change` with `Option<&N>` (upstream calls it with
+  `undefined` when the value is cleared), holding nothing, so the callback may set the value
+  again.
 - A node type built on the classic node implements `ClassicNode` (return the inner `Node` from
   `classic()`); a connection type implements `ClassicConnection`. The engines and
   `Connection::new` only read through those traits.
 
-## Dataflow ([[B6]] jsKeyOrder, [[B8]] resetVisitsOnce)
+## Dataflow
 
 - One value type `V: Clone` per engine stands in for JS `any`; a graph with mixed values uses an
   enum. Outputs are `KeyMap<V>`, inputs `KeyMap<Vec<V>>`.
@@ -118,14 +162,21 @@ values are one type `V` per engine (see Dataflow).
   `Error::Cancelled` up unchanged (Solenoid's composites do), or wrap its own failure with
   `Error::node`.
 - The engine caches each node's run as a `Cancellable`; `reset(Some(id))` deletes the cache of the
-  node and of every node reached through outputs its setup lists, visiting each node once with a
-  work list. On a graph without cycles this deletes exactly what upstream deletes; with a cycle
-  it stops where upstream overflows the stack. `reset(None)` clears everything.
+  node and of every node reached through outputs its setup lists, depth first in connection
+  order as upstream recurses, but with a work list that visits each node once. Without cycles it
+  deletes exactly what upstream deletes, in the same order, and fails at the same node when one
+  has no setup ("setup"). With a cycle it stops where upstream recurses until the stack
+  overflows, which in wasm aborts the whole module instead of throwing. `reset(None)` and
+  `reset(Some(""))` clear everything (upstream's `if (nodeId)`).
 - A cached run that failed stays failed until reset, as upstream's rejected promise does.
-- Upstream's engine throws out of the editor's `nodecreated` pipe when it isn't attached or the
-  node is already set up; a pipe can't fail here, so the engine skips the node, and a later
-  fetch fails with "node is not initialized".
-- A fetch that awaits itself through a cycle never finishes, as in JS.
+- Both engines: upstream throws out of the editor's `nodecreated` pipe when the engine isn't
+  attached or the node is already set up; a pipe can't fail here, so the engine skips the node,
+  and a later fetch or execute fails with "node is not initialized". An engine that isn't
+  attached fails with "DataflowEngine isn't attached to NodeEditor" (upstream's message) or
+  "ControlFlowEngine isn't attached to NodeEditor" (upstream fails with a `TypeError` there).
+- A fetch that awaits itself through a cycle never finishes, as in JS, and the futures in the
+  cycle hold each other, so they are never freed (JS would collect them). Solenoid marks cycles
+  as errors before fetching.
 
 ## Control flow
 
@@ -135,11 +186,15 @@ values are one type `V` per engine (see Dataflow).
 - `forward` returns `Result`; upstream's thrown "outputs don't have a key" reaches the caller when
   the node passes it on with `?`.
 
-## Ids ([[B9]] randomIds)
+## Ids and platforms
 
-`get_uid` reads eight bytes from getrandom (`crypto.getRandomValues` on wasm) and prints them as
-lowercase hex. `uid::set_random_source` swaps the source for the current thread, the seam
-upstream's tests get by mocking `crypto`.
+- `get_uid` reads eight bytes from getrandom and prints them as sixteen lowercase hex
+  characters, upstream's shape. Ids land in Solenoid's saves and get pasted between documents,
+  so they need a secure source, not a counter. `uid::set_random_source` swaps the source for the
+  current thread, the seam upstream's tests get by mocking `crypto`.
+- Both crates build for `wasm32-unknown-unknown` and native, and CI builds both. No dependency
+  may need threads or an OS. On wasm the one call out to the host is getrandom's `wasm_js`
+  backend (`crypto.getRandomValues`), which every browser and Node has.
 
 ## Solenoid's calls
 

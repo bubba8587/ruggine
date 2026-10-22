@@ -1,4 +1,4 @@
-// [[B4]] asyncNoRuntime, [[B6]] jsKeyOrder
+// [[B1]] upstreamIsSpec
 //! Upstream's `Dataflow`: pulls a node's inputs from its predecessors, recursively. Mapping
 //! notes: `tree/specs/port.md` § Dataflow.
 
@@ -8,7 +8,7 @@ use std::future::Future;
 use std::rc::Rc;
 
 use ruggine::classic::ClassicConnection;
-use ruggine::future::{LocalBoxFuture, try_join_all};
+use ruggine::future::{LocalBoxFuture, ready, try_join_all};
 use ruggine::{ConnectionBase, KeyMap, NodeBase, NodeEditor, Schemes, WeakNodeEditor};
 
 use crate::Error;
@@ -106,22 +106,25 @@ where
         self.inner.editor.upgrade().ok_or(Error::EditorDropped)
     }
 
-    /// The node's inputs, fetching every predecessor (but not running the node itself).
+    /// The node's inputs, fetching every predecessor (but not running the node itself). Like
+    /// upstream, every predecessor's fetch starts on this call, before the first poll.
     pub fn fetch_inputs(&self, node_id: &str) -> LocalBoxFuture<'static, Result<Inputs<V>, Error>> {
-        let this = self.clone();
-        let node_id = node_id.to_owned();
+        let Some(setup) = self.setup(node_id) else {
+            return ready(Err(Error::NotInitialized));
+        };
+        let input_keys = (setup.inputs)();
+        let editor = match self.editor() {
+            Ok(editor) => editor,
+            Err(e) => return ready(Err(e)),
+        };
+        let connections: Vec<_> = editor
+            .get_connections_to(node_id)
+            .into_iter()
+            .filter(|c| input_keys.iter().any(|k| k == c.target_input()))
+            .collect();
+        let fetches: Vec<_> = connections.iter().map(|c| self.fetch(c.source())).collect();
         Box::pin(async move {
-            let setup = this.setup(&node_id).ok_or(Error::NotInitialized)?;
-            let input_keys = (setup.inputs)();
-            let connections: Vec<_> = this
-                .editor()?
-                .get_connections()
-                .into_iter()
-                .filter(|c| {
-                    c.target() == node_id && input_keys.iter().any(|k| k == c.target_input())
-                })
-                .collect();
-            let fetched = try_join_all(connections.iter().map(|c| this.fetch(c.source()))).await?;
+            let fetched = try_join_all(fetches).await?;
             let mut inputs = Inputs::new();
             for (c, source_data) in connections.iter().zip(fetched) {
                 if inputs.get(c.target_input()).is_none() {
@@ -136,19 +139,22 @@ where
         })
     }
 
-    /// The node's outputs, running every predecessor it needs first.
+    /// The node's outputs, running every predecessor it needs first. Like upstream, the node's
+    /// `data` is called on this call, before the first poll.
     pub fn fetch(&self, node_id: &str) -> DataFuture<V> {
-        let this = self.clone();
+        let Some(setup) = self.setup(node_id) else {
+            return ready(Err(Error::NotInitialized));
+        };
+        let output_keys = (setup.outputs)();
+        let fetch_inputs: FetchInputs<V> = {
+            let this = self.clone();
+            let node_id = node_id.to_owned();
+            Box::new(move || this.fetch_inputs(&node_id))
+        };
+        let data = (setup.data)(fetch_inputs);
         let node_id = node_id.to_owned();
         Box::pin(async move {
-            let setup = this.setup(&node_id).ok_or(Error::NotInitialized)?;
-            let output_keys = (setup.outputs)();
-            let fetch_inputs: FetchInputs<V> = {
-                let this = this.clone();
-                let node_id = node_id.clone();
-                Box::new(move || this.fetch_inputs(&node_id))
-            };
-            let data = (setup.data)(fetch_inputs).await?;
+            let data = data.await?;
             if !output_keys.iter().all(|k| data.contains_key(k)) {
                 return Err(Error::MissingOutputs {
                     node_id,

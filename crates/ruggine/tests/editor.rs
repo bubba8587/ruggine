@@ -1,6 +1,9 @@
 // [[B1]] upstreamIsSpec: rete/test/index.test.ts
+mod common;
+
 use std::rc::Rc;
 
+use common::{Yield, block_on};
 use ruggine::future::{join_all, now_or_never};
 use ruggine::{BaseSchemes, ConnectionBase, Error, NodeBase, NodeEditor, Root};
 
@@ -49,6 +52,17 @@ fn run<F: std::future::Future>(f: F) -> F::Output {
 }
 
 type Editor = NodeEditor<BaseSchemes>;
+
+/// An editor whose every event waits a turn, so concurrent calls interleave as upstream's do
+/// (each of its `emit`s awaits).
+fn yielding_editor() -> Editor {
+    let editor = Editor::new();
+    editor.add_async_pipe(|ctx| async move {
+        Yield::once().await;
+        Some(ctx)
+    });
+    editor
+}
 
 #[test]
 fn add_node_adds_a_node() {
@@ -103,16 +117,16 @@ fn remove_node_removes_a_node() {
 
 #[test]
 fn remove_node_removes_the_specified_nodes() {
-    let editor = Editor::new();
+    let editor = yielding_editor();
     let ids: Vec<String> = (1..=10).map(|i| i.to_string()).collect();
-    run(join_all(ids.iter().map(|id| editor.add_node(node(id)))));
-    run(join_all(ids[..5].iter().map(|id| editor.remove_node(id))));
+    block_on(join_all(ids.iter().map(|id| editor.add_node(node(id)))));
+    block_on(join_all(ids[..5].iter().map(|id| editor.remove_node(id))));
     let remain: Vec<String> = editor
         .get_nodes()
         .iter()
         .map(|n| n.id().to_owned())
         .collect();
-    run(editor.clear()).unwrap();
+    block_on(editor.clear()).unwrap();
     assert_eq!(remain, ["6", "7", "8", "9", "10"]);
 }
 
@@ -128,20 +142,20 @@ fn remove_connection_removes_a_connection() {
 
 #[test]
 fn remove_connection_removes_the_specified_connections() {
-    let editor = Editor::new();
+    let editor = yielding_editor();
     let ids: Vec<String> = (1..=10).map(|i| i.to_string()).collect();
-    run(join_all(
+    block_on(join_all(
         ids.iter()
             .map(|id| editor.add_node(node(&format!("s{id}")))),
     ));
-    run(join_all(
+    block_on(join_all(
         ids.iter()
             .map(|id| editor.add_node(node(&format!("t{id}")))),
     ));
-    run(join_all(ids.iter().map(|id| {
+    block_on(join_all(ids.iter().map(|id| {
         editor.add_connection(conn(id, &format!("s{id}"), &format!("t{id}")))
     })));
-    run(join_all(
+    block_on(join_all(
         ids[..5].iter().map(|id| editor.remove_connection(id)),
     ));
     let remain: Vec<String> = editor
@@ -149,7 +163,7 @@ fn remove_connection_removes_the_specified_connections() {
         .iter()
         .map(|c| c.id().to_owned())
         .collect();
-    run(editor.clear()).unwrap();
+    block_on(editor.clear()).unwrap();
     assert_eq!(remain, ["6", "7", "8", "9", "10"]);
 }
 
@@ -257,4 +271,31 @@ fn lookups_follow_removals() {
         .map(|n| n.id().to_owned())
         .collect();
     assert_eq!(order, ["a", "c", "d", "b"]);
+}
+
+#[test]
+fn connections_by_node_follow_adds_and_removals() {
+    let editor = Editor::new();
+    for id in ["a", "b", "c"] {
+        run(editor.add_node(node(id))).unwrap();
+    }
+    for (id, s, t) in [
+        ("1", "a", "c"),
+        ("2", "b", "c"),
+        ("3", "a", "b"),
+        ("4", "a", "c"),
+    ] {
+        run(editor.add_connection(conn(id, s, t))).unwrap();
+    }
+    let ids = |list: Vec<Rc<dyn ConnectionBase>>| -> Vec<String> {
+        list.iter().map(|c| c.id().to_owned()).collect()
+    };
+    assert_eq!(ids(editor.get_connections_to("c")), ["1", "2", "4"]);
+    assert_eq!(ids(editor.get_connections_from("a")), ["1", "3", "4"]);
+    run(editor.remove_connection("1")).unwrap();
+    assert_eq!(ids(editor.get_connections_to("c")), ["2", "4"]);
+    assert_eq!(ids(editor.get_connections_from("a")), ["3", "4"]);
+    run(editor.clear()).unwrap();
+    assert!(editor.get_connections_to("c").is_empty());
+    assert!(editor.get_connections_from("a").is_empty());
 }

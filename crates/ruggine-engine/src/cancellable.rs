@@ -1,4 +1,4 @@
-// [[B4]] asyncNoRuntime
+// [[B1]] upstreamIsSpec
 //! Upstream's `createCancellblePromise`: steps run in order, and once `cancel` is called the
 //! sequence fails with [`Error::Cancelled`] as soon as the running step finishes.
 

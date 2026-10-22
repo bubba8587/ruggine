@@ -1,4 +1,4 @@
-// [[B4]] asyncNoRuntime, [[B5]] sharedHandles, [[B8]] resetVisitsOnce
+// [[B1]] upstreamIsSpec
 //! Upstream's `DataflowEngine`: a plugin that registers every node the editor adds with a
 //! [`Dataflow`] and caches each node's data until `reset`.
 
@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::rc::{Rc, Weak};
 
 use ruggine::classic::{ClassicConnection, ClassicNode};
-use ruggine::future::LocalBoxFuture;
+use ruggine::future::{LocalBoxFuture, scheduled};
 use ruggine::{
     ConnectionBase, NodeBase, NodeEditor, ParentRef, Plugin, Root, Schemes, Scope, WeakNodeEditor,
 };
@@ -116,7 +116,7 @@ where
             .dataflow
             .borrow()
             .clone()
-            .ok_or(Error::NotAttached)
+            .ok_or(Error::NotAttached("DataflowEngine"))
     }
 
     fn editor(&self) -> Result<NodeEditor<S>, Error> {
@@ -125,7 +125,7 @@ where
             .editor
             .borrow()
             .clone()
-            .ok_or(Error::NotAttached)?;
+            .ok_or(Error::NotAttached("DataflowEngine"))?;
         editor.upgrade().ok_or(Error::EditorDropped)
     }
 
@@ -150,7 +150,9 @@ where
             outputs: ports.outputs,
             data: Box::new(move |fetch_inputs| -> DataFuture<V> {
                 let Some(inner) = engine.upgrade() else {
-                    return Box::pin(std::future::ready(Err(Error::NotAttached)));
+                    return Box::pin(std::future::ready(Err(Error::NotAttached(
+                        "DataflowEngine",
+                    ))));
                 };
                 let id = data_node.id().to_owned();
                 if let Some(cached) = inner.cache.get(&id) {
@@ -181,12 +183,12 @@ where
     /// outputs it computes; `None` clears everything. A fetch in flight fails with
     /// [`Error::Cancelled`].
     pub fn reset(&self, node_id: Option<&str>) -> Result<(), Error> {
-        let Some(start) = node_id else {
+        let Some(start) = node_id.filter(|id| !id.is_empty()) else {
             self.inner.cache.clear();
             return Ok(());
         };
         let dataflow = self.dataflow()?;
-        let connections = self.editor()?.get_connections();
+        let editor = self.editor()?;
         let mut visited = HashSet::new();
         let mut work = vec![start.to_owned()];
         while let Some(id) = work.pop() {
@@ -196,14 +198,13 @@ where
             let setup = dataflow.setup(&id).ok_or(Error::NoSetup)?;
             let output_keys = (setup.outputs)();
             self.inner.cache.delete(&id);
-            work.extend(
-                connections
-                    .iter()
-                    .filter(|c| {
-                        c.source() == id && output_keys.iter().any(|k| k == c.source_output())
-                    })
-                    .map(|c| c.target().to_owned()),
-            );
+            let next: Vec<String> = editor
+                .get_connections_from(&id)
+                .iter()
+                .filter(|c| output_keys.iter().any(|k| k == c.source_output()))
+                .map(|c| c.target().to_owned())
+                .collect();
+            work.extend(next.into_iter().rev());
         }
         Ok(())
     }
@@ -211,7 +212,7 @@ where
     /// The node's inputs, fetching every predecessor.
     pub fn fetch_inputs(&self, node_id: &str) -> LocalBoxFuture<'static, Result<Inputs<V>, Error>> {
         match self.dataflow() {
-            Ok(dataflow) => dataflow.fetch_inputs(node_id),
+            Ok(dataflow) => Box::pin(scheduled(dataflow.fetch_inputs(node_id))),
             Err(e) => Box::pin(std::future::ready(Err(e))),
         }
     }
@@ -219,7 +220,7 @@ where
     /// The node's outputs, from the cache when present.
     pub fn fetch(&self, node_id: &str) -> DataFuture<V> {
         match self.dataflow() {
-            Ok(dataflow) => dataflow.fetch(node_id),
+            Ok(dataflow) => Box::pin(scheduled(dataflow.fetch(node_id))),
             Err(e) => Box::pin(std::future::ready(Err(e))),
         }
     }

@@ -1,4 +1,4 @@
-// [[B5]] sharedHandles, [[B6]] jsKeyOrder
+// [[B1]] upstreamIsSpec
 //! Upstream's `ClassicPreset`: sockets, ports, controls, nodes and connections. Mapping notes:
 //! `tree/specs/port.md` § Classic preset.
 
@@ -278,15 +278,22 @@ impl<N> InputControl<N> {
         }
     }
 
-    pub fn value(&self) -> Ref<'_, Option<N>> {
-        self.value.borrow()
+    pub fn value(&self) -> Option<N>
+    where
+        N: Clone,
+    {
+        self.value.borrow().clone()
     }
 
-    /// Sets the value, then calls the `change` option with it.
-    pub fn set_value(&self, value: Option<N>) {
-        *self.value.borrow_mut() = value;
+    /// Sets the value, then calls the `change` option with it; the callback may set the value
+    /// again.
+    pub fn set_value(&self, value: Option<N>)
+    where
+        N: Clone,
+    {
+        *self.value.borrow_mut() = value.clone();
         if let Some(change) = &self.change {
-            change(self.value.borrow().as_ref());
+            change(value.as_ref());
         }
     }
 

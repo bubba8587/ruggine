@@ -18,7 +18,8 @@ pub enum Error {
     },
     /// `reset` met a node with no setup.
     NoSetup,
-    NotAttached,
+    /// Names the engine, as upstream's message does.
+    NotAttached(&'static str),
     /// The editor an engine reads from has been dropped.
     EditorDropped,
     UnknownInput,
@@ -62,7 +63,7 @@ impl fmt::Display for Error {
                 got.join("\", \"")
             ),
             Self::NoSetup => f.write_str("setup"),
-            Self::NotAttached => f.write_str("engine isn't attached to NodeEditor"),
+            Self::NotAttached(engine) => write!(f, "{engine} isn't attached to NodeEditor"),
             Self::EditorDropped => f.write_str("the NodeEditor has been dropped"),
             Self::UnknownInput => f.write_str("inputs don't have a key"),
             Self::UnknownOutput => f.write_str("outputs don't have a key"),
