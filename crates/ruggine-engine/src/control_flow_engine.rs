@@ -21,7 +21,7 @@ type Configure<N> = Box<dyn Fn(&Rc<N>) -> PortSelection>;
 
 struct EngineInner<S: Schemes> {
     scope: Scope<Root<S>>,
-    configure: Option<Configure<S::Node>>,
+    configure: Configure<S::Node>,
     control_flow: RefCell<Option<ControlFlow<S>>>,
 }
 
@@ -58,15 +58,28 @@ where
 {
     /// Every input and output of each node takes part.
     pub fn new() -> Self {
-        Self::build(None)
+        Self::with_configure(|node: &Rc<S::Node>| {
+            let (a, b) = (node.clone(), node.clone());
+            PortSelection {
+                inputs: Box::new(move || a.classic().input_keys()),
+                outputs: Box::new(move || b.classic().output_keys()),
+            }
+        })
     }
+}
 
+impl<S> ControlFlowEngine<S>
+where
+    S: Schemes,
+    S::Node: ControlFlowNode,
+    S::Connection: ClassicConnection,
+{
     /// `configure` picks, per node, which inputs and outputs carry control.
     pub fn with_configure(configure: impl Fn(&Rc<S::Node>) -> PortSelection + 'static) -> Self {
-        Self::build(Some(Box::new(configure)))
+        Self::build(Box::new(configure))
     }
 
-    fn build(configure: Option<Configure<S::Node>>) -> Self {
+    fn build(configure: Configure<S::Node>) -> Self {
         let inner = Rc::new_cyclic(|weak: &Weak<EngineInner<S>>| {
             let scope = Scope::new("control-flow-engine");
             let engine = weak.clone();
@@ -104,16 +117,7 @@ where
         let Ok(control_flow) = self.attached() else {
             return;
         };
-        let ports = match &self.inner.configure {
-            Some(configure) => configure(&node),
-            None => {
-                let (a, b) = (node.clone(), node.clone());
-                PortSelection {
-                    inputs: Box::new(move || a.classic().input_keys()),
-                    outputs: Box::new(move || b.classic().output_keys()),
-                }
-            }
-        };
+        let ports = (self.inner.configure)(&node);
         let target = node.clone();
         let setup = ControlFlowNodeSetup {
             inputs: ports.inputs,
@@ -138,7 +142,7 @@ where
 impl<S> Plugin<Root<S>> for ControlFlowEngine<S>
 where
     S: Schemes,
-    S::Node: ClassicNode + ControlFlowNode,
+    S::Node: ControlFlowNode,
     S::Connection: ClassicConnection,
 {
     type Signal = Root<S>;

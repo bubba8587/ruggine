@@ -34,7 +34,7 @@ type Configure<N> = Box<dyn Fn(&Rc<N>) -> PortSelection>;
 
 struct EngineInner<S: Schemes, V: Clone + 'static> {
     scope: Scope<Root<S>>,
-    configure: Option<Configure<S::Node>>,
+    configure: Configure<S::Node>,
     editor: RefCell<Option<WeakNodeEditor<S>>>,
     dataflow: RefCell<Option<Dataflow<S, V>>>,
     cache: Cache<String, Cancellable<Rc<Outputs<V>>>>,
@@ -75,15 +75,29 @@ where
 {
     /// Every input and output of each node takes part.
     pub fn new() -> Self {
-        Self::build(None)
+        Self::with_configure(|node: &Rc<S::Node>| {
+            let (a, b) = (node.clone(), node.clone());
+            PortSelection {
+                inputs: Box::new(move || a.classic().input_keys()),
+                outputs: Box::new(move || b.classic().output_keys()),
+            }
+        })
     }
+}
 
+impl<S, V> DataflowEngine<S, V>
+where
+    S: Schemes,
+    S::Node: DataflowNode<V>,
+    S::Connection: ClassicConnection,
+    V: Clone + 'static,
+{
     /// `configure` picks, per node, which inputs and outputs take part.
     pub fn with_configure(configure: impl Fn(&Rc<S::Node>) -> PortSelection + 'static) -> Self {
-        Self::build(Some(Box::new(configure)))
+        Self::build(Box::new(configure))
     }
 
-    fn build(configure: Option<Configure<S::Node>>) -> Self {
+    fn build(configure: Configure<S::Node>) -> Self {
         let inner = Rc::new_cyclic(|weak: &Weak<EngineInner<S, V>>| {
             let scope = Scope::new("dataflow-engine");
             let engine = weak.clone();
@@ -131,16 +145,7 @@ where
         let Ok(dataflow) = self.attached() else {
             return;
         };
-        let ports = match &self.inner.configure {
-            Some(configure) => configure(&node),
-            None => {
-                let (a, b) = (node.clone(), node.clone());
-                PortSelection {
-                    inputs: Box::new(move || a.classic().input_keys()),
-                    outputs: Box::new(move || b.classic().output_keys()),
-                }
-            }
-        };
+        let ports = (self.inner.configure)(&node);
         let engine = Rc::downgrade(&self.inner);
         let data_node = node.clone();
         let setup = DataflowNodeSetup {
@@ -239,7 +244,7 @@ where
 impl<S, V> Plugin<Root<S>> for DataflowEngine<S, V>
 where
     S: Schemes,
-    S::Node: ClassicNode + DataflowNode<V>,
+    S::Node: DataflowNode<V>,
     S::Connection: ClassicConnection,
     V: Clone + 'static,
 {

@@ -180,7 +180,9 @@ values are one type `V` per engine (see Dataflow).
   again.
 - A node type built on the classic node implements `ClassicNode` (return the inner `Node` from
   `classic()`); a connection type implements `ClassicConnection`. The engines and
-  `Connection::new` only read through those traits.
+  `Connection::new` only read through those traits, and only the engines' `new()` needs
+  `ClassicNode`: with `with_configure`, as upstream's `configure` argument, any node type works
+  (`ruggine-engine/tests/configure.rs`).
 
 ## Dataflow
 
