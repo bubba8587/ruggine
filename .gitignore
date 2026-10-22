@@ -1,0 +1,6 @@
+/target
+**/*.rs.bk
+.obsidian
+.DS_Store
+*.swp
+__pycache__

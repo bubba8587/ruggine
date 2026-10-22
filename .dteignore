@@ -1,0 +1,13 @@
+# Globs the dte scanner skips (in addition to .git and the decisions dir).
+target
+__pycache__
+.claude
+.git
+# The vendored DTE tool: its dte: tokens belong to DTE's own tree, not this one.
+tools/dte.py
+# Vendored DTE rule text: its citations are DTE's tree, not this one.
+dte-rules/*
+# Upstream rete source kept as the porting reference; it cites nothing of ours.
+upstream
+*.lock
+.obsidian

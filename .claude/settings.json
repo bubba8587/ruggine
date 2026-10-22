@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo build *)",
+      "Bash(cargo test *)",
+      "Bash(cargo clippy *)",
+      "Bash(cargo fmt *)",
+      "Bash(python3 tools/dte.py *)",
+      "WebFetch(domain:raw.githubusercontent.com)"
+    ]
+  }
+}
