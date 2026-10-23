@@ -32,6 +32,7 @@ why. Names are rete's in snake_case.
 | `editor.addPipe(ctx => ...)` | `editor.add_pipe(\|ctx\| ...)`, returning a `PipeId`; `add_async_pipe` for an async pipe |
 | a pipe returning `undefined` | returning `None` |
 | (no way to remove a pipe) | `editor.remove_pipe(id)` |
+| `editor.nodes` written in place to reorder | `editor.reorder_nodes(&order)` |
 | `ctx.type === 'nodecreated'`, `ctx.data` | `match ctx { Root::NodeCreated(node) => ..., _ => ... }`; `ctx.type_name()` gives the string |
 | `editor.use(plugin)` | `editor.use_scope(&plugin)?` |
 | `new Scope<Produces, Parents>('name')` | `Scope::<Signal>::new("name")`, where `Signal` is one type for `Produces \| Parents[number]` |

@@ -145,6 +145,10 @@ values are one type `V` per engine (see Dataflow).
 - `get_connections_to(node)` / `get_connections_from(node)` answer upstream's
   `getConnections().filter(c => c.target === node)` (or `source`) from an index, in the same
   order. The engines use them; upstream's scan per node makes a fetch quadratic in graph size.
+- Beyond upstream, whose list can't be reordered: `reorder_nodes(order)` puts the node list in a
+  full order naming every node once, sending no signal, and refuses anything else. Solenoid's
+  node order is its stacking order, which the canvas rewrites; upstream Solenoid wrote rete's
+  array in place.
 - Root signals are an enum, `Root::NodeCreate(node)` for upstream's
   `{ type: 'nodecreate', data: node }`; `type_name()` gives the string.
 - Two concurrency fixes over upstream, both where upstream corrupts its list: if the same id is

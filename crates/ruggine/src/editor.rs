@@ -116,6 +116,29 @@ impl<T: ?Sized> Store<T> {
         self.live += 1;
     }
 
+    /// Puts the items in `order`, which must name each stored id once; `false` (and nothing
+    /// moved) when it doesn't.
+    fn reorder(&mut self, order: &[&str]) -> bool {
+        if order.len() != self.live {
+            return false;
+        }
+        let mut seen = vec![false; self.slots.len()];
+        for &id in order {
+            match self.index.get(id) {
+                Some(&at) if !seen[at] => seen[at] = true,
+                _ => return false,
+            }
+        }
+        let mut slots = Vec::with_capacity(order.len());
+        for (i, &id) in order.iter().enumerate() {
+            let at = self.index.get_mut(id).expect("checked above");
+            slots.push(self.slots[*at].take());
+            *at = i;
+        }
+        self.slots = slots;
+        true
+    }
+
     /// Removes `item` itself, wherever it sits now; `false` if it is no longer stored.
     fn remove(&mut self, id: &str, item: &Rc<T>) -> bool {
         let Some(&at) = self.index.get(id) else {
@@ -251,6 +274,12 @@ impl<S: Schemes> NodeEditor<S> {
     /// A copy of the node list, in the order nodes were added.
     pub fn get_nodes(&self) -> Vec<Rc<S::Node>> {
         self.inner.nodes.borrow().items()
+    }
+
+    /// Puts the node list in `order`, which must name every node once; `false` (and nothing
+    /// moved) when it doesn't. Beyond upstream, whose list has no reorder; no signal is sent.
+    pub fn reorder_nodes(&self, order: &[&str]) -> bool {
+        self.inner.nodes.borrow_mut().reorder(order)
     }
 
     pub fn get_connection(&self, id: &str) -> Option<Rc<S::Connection>> {

@@ -342,3 +342,23 @@ fn an_editor_pipe_can_be_removed() {
     run(editor.add_node(node("2"))).unwrap();
     assert_eq!(seen.get(), 2);
 }
+
+#[test]
+fn reorder_nodes_takes_a_full_order_or_nothing() {
+    let editor = Editor::new();
+    for id in ["a", "b", "c"] {
+        run(editor.add_node(node(id))).unwrap();
+    }
+    let order =
+        |e: &Editor| -> Vec<String> { e.get_nodes().iter().map(|n| n.id().to_owned()).collect() };
+    assert!(editor.reorder_nodes(&["c", "a", "b"]));
+    assert_eq!(order(&editor), ["c", "a", "b"]);
+    assert!(!editor.reorder_nodes(&["b"]));
+    assert!(!editor.reorder_nodes(&["a", "a", "b"]));
+    assert!(!editor.reorder_nodes(&["a", "x", "b"]));
+    assert_eq!(order(&editor), ["c", "a", "b"]);
+    assert!(editor.get_node("a").is_some());
+    run(editor.remove_node("a")).unwrap();
+    run(editor.add_node(node("d"))).unwrap();
+    assert_eq!(order(&editor), ["c", "b", "d"]);
+}

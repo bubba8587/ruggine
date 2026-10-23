@@ -35,3 +35,5 @@ Open problems and the latest session digests. Older digests move to
   `solenoid/tsrs` now runs its dataflow on Ruggine, pinned by git revision.
 - Settled by the author: Ruggine is Rust-only ([[B10]] rustOnly); Solenoid reaches it by moving
   its graph layer into its Rust core.
+- Fourth round (2026-10-23): `NodeEditor::reorder_nodes(order)`, beyond rete, for Solenoid's
+  stacking order now that its graph model is a Ruggine editor (`port.md` § Editor).
