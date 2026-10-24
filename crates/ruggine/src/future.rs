@@ -233,6 +233,8 @@ struct Queue {
     remote: Arc<Remote>,
     ready: RefCell<VecDeque<Rc<dyn Task>>>,
     tasks: RefCell<HashMap<u64, Weak<dyn Task>>>,
+    /// The task map's size after its last sweep; the next sweep waits until it has doubled.
+    swept: Cell<usize>,
     /// The wakers of the tasks being run, innermost last.
     running: RefCell<Vec<Waker>>,
 }
@@ -245,6 +247,7 @@ thread_local! {
         }),
         ready: RefCell::new(VecDeque::new()),
         tasks: RefCell::new(HashMap::default()),
+        swept: Cell::new(0),
         running: RefCell::new(Vec::new()),
     });
 }
@@ -265,8 +268,9 @@ impl Queue {
     fn enqueue(&self, task: Rc<dyn Task>) {
         if task.mark_queued() {
             let mut tasks = self.tasks.borrow_mut();
-            if tasks.len() >= 1024 && tasks.len() % 1024 == 0 {
+            if tasks.len() >= 1024.max(2 * self.swept.get()) {
                 tasks.retain(|_, t| t.strong_count() > 0);
+                self.swept.set(tasks.len());
             }
             tasks.insert(task.task_id(), Rc::downgrade(&task));
             drop(tasks);

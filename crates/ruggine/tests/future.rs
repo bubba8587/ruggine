@@ -222,3 +222,30 @@ fn a_poll_from_outside_the_queue_is_woken_when_shared_work_is_poisoned() {
         "the other waiter hears about it"
     );
 }
+
+#[test]
+fn requeueing_live_work_never_sweeps_the_task_map_each_time() {
+    struct Yield(u32);
+    impl std::future::Future for Yield {
+        type Output = u32;
+        fn poll(
+            mut self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<u32> {
+            if self.0 == 0 {
+                return std::task::Poll::Ready(0);
+            }
+            self.0 -= 1;
+            cx.waker().wake_by_ref();
+            std::task::Poll::Pending
+        }
+    }
+    // 1024 live tasks, each woken 300 times: every requeue lands while the map holds a multiple of 1024.
+    let tasks: Vec<_> = (0..1024)
+        .map(|_| ruggine::future::Shared::spawn(Yield(300)))
+        .collect();
+    let t0 = std::time::Instant::now();
+    let done = now_or_never(join_all(tasks)).unwrap();
+    assert_eq!(done.len(), 1024);
+    assert!(t0.elapsed().as_secs_f64() < 2.5, "{:?}", t0.elapsed());
+}
