@@ -37,3 +37,9 @@ Open problems and the latest session digests. Older digests move to
   its graph layer into its Rust core.
 - Fourth round (2026-10-23): `NodeEditor::reorder_nodes(order)`, beyond rete, for Solenoid's
   stacking order now that its graph model is a Ruggine editor (`port.md` § Editor).
+- Fifth round (2026-10-24, whole-crate review against upstream): control flow forwards along
+  `get_connections_from` (it scanned every connection per forward); the task map sweeps once it
+  doubles, not on every requeue while its size sits on a multiple of 1024; replaced cache items,
+  setups and controls drop after their borrow ends. `port.md` gains three divergences: `forward`
+  is lent for one `execute`, synchronous pipes don't yield (concurrent edits interleave
+  differently), and a run nothing holds is dropped where it waits.
