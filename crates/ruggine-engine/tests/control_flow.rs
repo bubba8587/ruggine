@@ -203,3 +203,42 @@ fn control_runs_depth_first_and_returns_to_the_forwarder() {
         ["a:None", "b:Some(\"in\")", "c:Some(\"in\")", "a:end"]
     );
 }
+
+#[test]
+fn forwarding_reads_only_the_forwarders_connections() {
+    let (editor, flow) = setup();
+    let root = Node::new("root");
+    root.add_output("out", Output::new(Socket::new("s")))
+        .unwrap();
+    flow.add(
+        &root,
+        ControlFlowNodeSetup::new(Vec::new, || vec!["out".into()], |_, forward| forward("out")),
+    )
+    .unwrap();
+    let (calls, count) = counter();
+    for _ in 0..20_000 {
+        let leaf = Node::new("leaf");
+        leaf.add_input("in", Input::new(Socket::new("s"))).unwrap();
+        leaf.add_output("out", Output::new(Socket::new("s")))
+            .unwrap();
+        run(editor.add_connection(Rc::new(Connection::new(&root, "out", &leaf, "in").unwrap())))
+            .unwrap();
+        let count = count.clone();
+        flow.add(
+            &leaf,
+            ControlFlowNodeSetup::new(
+                || vec!["in".into()],
+                || vec!["out".into()],
+                move |_, forward| {
+                    count.set(count.get() + 1);
+                    forward("out")
+                },
+            ),
+        )
+        .unwrap();
+    }
+    let t0 = std::time::Instant::now();
+    flow.execute(&root.id, None).unwrap();
+    assert_eq!(calls.get(), 20_000);
+    assert!(t0.elapsed().as_secs_f64() < 2.0, "{:?}", t0.elapsed());
+}

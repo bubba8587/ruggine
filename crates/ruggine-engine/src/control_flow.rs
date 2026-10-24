@@ -83,7 +83,8 @@ where
     }
 
     pub fn remove(&self, node_id: &str) {
-        self.inner.setups.borrow_mut().remove(node_id);
+        let removed = self.inner.setups.borrow_mut().remove(node_id);
+        drop(removed);
     }
 
     pub fn has(&self, node_id: &str) -> bool {
@@ -111,9 +112,9 @@ where
             }
             let editor = self.inner.editor.upgrade().ok_or(Error::EditorDropped)?;
             let targets: Vec<_> = editor
-                .get_connections()
+                .get_connections_from(node_id)
                 .into_iter()
-                .filter(|c| c.source() == node_id && c.source_output() == output)
+                .filter(|c| c.source_output() == output)
                 .collect();
             for c in targets {
                 self.execute(c.target(), Some(c.target_input()))?;
