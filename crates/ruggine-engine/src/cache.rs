@@ -48,8 +48,10 @@ impl<K: Eq + Hash + Clone, T: Clone> Cache<K, T> {
         Ok(())
     }
 
+    /// The replaced item drops after the map is released, so its `Drop` may read the cache.
     pub fn patch(&self, key: K, data: T) {
-        self.items.borrow_mut().insert(key, data);
+        let replaced = self.items.borrow_mut().insert(key, data);
+        drop(replaced);
     }
 
     pub fn delete<Q: Hash + Eq + ?Sized>(&self, key: &Q)

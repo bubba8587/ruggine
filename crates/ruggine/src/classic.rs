@@ -130,7 +130,8 @@ impl<S> Input<S> {
     }
 
     pub fn remove_control(&self) {
-        *self.control.borrow_mut() = None;
+        let removed = self.control.borrow_mut().take();
+        drop(removed);
     }
 
     pub fn show_control(&self) -> bool {

@@ -96,7 +96,8 @@ where
     }
 
     pub fn remove(&self, node_id: &str) {
-        self.inner.setups.borrow_mut().remove(node_id);
+        let removed = self.inner.setups.borrow_mut().remove(node_id);
+        drop(removed);
     }
 
     pub fn setup(&self, node_id: &str) -> Option<Rc<DataflowNodeSetup<V>>> {

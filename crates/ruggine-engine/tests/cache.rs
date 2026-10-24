@@ -60,3 +60,38 @@ fn clears_every_item() {
     assert_eq!(c.get("key1"), None);
     assert_eq!(c.get("key2"), None);
 }
+
+#[test]
+fn a_patched_out_item_can_read_the_cache_as_it_drops() {
+    struct Probe(
+        std::rc::Weak<Cache<String, Probe>>,
+        bool,
+        Rc<RefCell<Option<i32>>>,
+    );
+    impl Clone for Probe {
+        fn clone(&self) -> Self {
+            Probe(self.0.clone(), false, self.2.clone())
+        }
+    }
+    impl Drop for Probe {
+        fn drop(&mut self) {
+            if self.1 {
+                let seen = self
+                    .0
+                    .upgrade()
+                    .and_then(|c| c.get("key1"))
+                    .map(|p| p.2.borrow().unwrap_or(0));
+                *self.2.borrow_mut() = Some(seen.unwrap_or(-1));
+            }
+        }
+    }
+    let c: Rc<Cache<String, Probe>> = Rc::new(Cache::new());
+    let seen = Rc::new(RefCell::new(None));
+    c.add("key1".into(), Probe(Rc::downgrade(&c), true, seen.clone()))
+        .unwrap();
+    c.patch(
+        "key1".into(),
+        Probe(Rc::downgrade(&c), false, Rc::new(RefCell::new(Some(7)))),
+    );
+    assert_eq!(*seen.borrow(), Some(7));
+}

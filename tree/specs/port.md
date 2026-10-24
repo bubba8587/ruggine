@@ -82,7 +82,10 @@ values are one type `V` per engine (see Dataflow).
 - Work nobody awaits any more (the siblings of a fetch that failed) runs whenever the queue next
   runs. `future::background()` is the host's event loop for it: spawned once, it runs the queue
   dry every time work arrives, so that work finishes as it would in JS even if Ruggine is never
-  called again.
+  called again. That holds only while something holds the work: the queue keeps a task only
+  while it is queued, so a run that waits on something outside, and that nothing else holds
+  once a reset or `cache().delete` drops it, is dropped where it waits and its node's remaining
+  work never runs. Upstream's promise would run on and then fail its commit with `Cancelled`.
 - What matches upstream, checked by `ruggine-engine/tests/oracle_fuzz.rs` on random operation
   sequences recorded from upstream (`tools/oracle/fuzz.cjs`): every operation's result and every
   editor event, in order, and the set of node work that runs. What can differ, because it
@@ -91,7 +94,12 @@ values are one type `V` per engine (see Dataflow).
   - the order in which sibling inputs' work runs within one fetch;
   - when several fetches are in flight and more than one fails, which failure is reported;
   - whether a reset issued while abandoned work is still running lands before or after a given
-    node's work.
+    node's work;
+  - how concurrent editor operations interleave when every pipe is synchronous: upstream's
+    `emit` awaits each pipe, a microtask turn even for a synchronous one, so
+    `Promise.all([removeNode('1'), removeNode('2')])` signals `noderemove:1, noderemove:2,
+    noderemoved:1, noderemoved:2`; here a synchronous chain runs in one poll, so each operation's
+    signals run together (`noderemove:1, noderemoved:1, noderemove:2, noderemoved:2`).
   Matching those would mean replaying V8's promise job scheduling turn for turn; nothing
   Solenoid does depends on them, since it fetches one node at a time.
 - A `Shared` whose work panics poisons: every later await panics too, and everyone waiting is
@@ -102,7 +110,9 @@ values are one type `V` per engine (see Dataflow).
 - `Promise.all` is `join_all` / `try_join_all`, polling their futures in input order.
 - Control flow is synchronous upstream and stays recursive here, one call per forward, because
   the order (forward runs the successor before the forwarding node continues) is its contract.
-  A very long control chain can exhaust the stack where JS would throw `RangeError`.
+  A very long control chain can exhaust the stack where JS would throw `RangeError`. `forward`
+  is lent for the one `execute` call (`&dyn Fn`): a node can't keep it and forward later, after a
+  timer, as upstream's closure allows.
 
 ## Scopes
 
